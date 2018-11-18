@@ -126,7 +126,7 @@ function dongle:new(port, baud)
 
   d.on_leave_network = ctx:task(function()
     while true do
-      local _, enddevice = d:waitreq(t, "AREQ_ZDO_LEAVE_IND")
+      local _, enddevice = d:waitreq("AREQ_ZDO_LEAVE_IND")
       U.INFO(d.subsys, "device %s left the network, will %srejoin the network", enddevice.IEEEAddr, enddevice.Rejoin == 0 and "not " or "")
       ctx:fire(zigbee.ev.device_leave, {dongle = d, ieeeaddr = enddevice.IEEEAddr})
     end
