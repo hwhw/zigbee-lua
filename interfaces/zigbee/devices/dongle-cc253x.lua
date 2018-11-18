@@ -1,12 +1,13 @@
-local C = require"config"
+local ctx = require"lib.ctx"
 local U = require"lib.util"
 local ffi = require"ffi"
 local bit = require"bit"
 local S = require"lib.ljsyscall"
 local serial = require"lib.serial"
-local srv = require"lib.srv"
+local ZNP = require"lib.codec""interfaces.zigbee.cc-znp"
+local zigbee = require"interfaces.zigbee"
 
-local dongle = {_taskid=0}
+local dongle = {}
 
 local cmd_types = {
   [0] = "POLL",
@@ -30,57 +31,6 @@ local cmd_subsystems = {
   [21] = "GreenPower"  -- no ZNP
 }
 
-local znp_status = {
-  [0x00] = "ZSuccess",
-  [0x01] = "Zfailure",
-  [0x02] = "ZinvalidParameter",
-  [0x09] = "NV_ITEM_UNINIT",
-  [0x0a] = "NV_OPER_FAILED",
-  [0x0c] = "NV_BAD_ITEM",
-  [0x10] = "ZmemError",
-  [0x11] = "ZbufferFull",
-  [0x12] = "ZunsupportedMode",
-  [0x13] = "ZmacMemError",
-  [0x80] = "zdoInvalidRequestType",
-  [0x82] = "zdoInvalidEndpoint",
-  [0x84] = "zdoUnsupported",
-  [0x85] = "zdoTimeout",
-  [0x86] = "zdoNoMatch",
-  [0x87] = "zdoTableFull",
-  [0x88] = "zdoNoBindEntry",
-  [0xa1] = "ZSecNoKey",
-  [0xa3] = "ZSecMaxFrmCount",
-  [0xb1] = "ZapsFail",
-  [0xb2] = "ZapsTableFull",
-  [0xb3] = "ZapsIllegalRequest",
-  [0xb4] = "ZapsInvalidBinding",
-  [0xb5] = "ZapsUnsupportedAttrib",
-  [0xb6] = "ZapsNotSupported",
-  [0xb7] = "ZapsNoAck",
-  [0xb8] = "ZapsDuplicateEntry",
-  [0xb9] = "ZapsNoBoundDevice",
-  [0xc1] = "ZnwkInvalidParam",
-  [0xc2] = "ZnwkInvalidRequest",
-  [0xc3] = "ZnwkNotPermitted",
-  [0xc4] = "ZnwkStartupFailure",
-  [0xc7] = "ZnwkTableFull",
-  [0xc8] = "ZnwkUnknownDevice",
-  [0xc9] = "ZnwkUnsupportedAttribute",
-  [0xca] = "ZnwkNoNetworks",
-  [0xcb] = "ZnwkLeaveUnconfirmed",
-  [0xcc] = "ZnwkNoAck",
-  [0xcd] = "ZnwkNoRoute",
-  [0xe9] = "ZMacNoACK"
-}
-
-local sreq_error_codes = {
-  [0x01] = "Invalid subsystem",
-  [0x02] = "Invalid command ID",
-  [0x03] = "Invalid parameter",
-  [0x04] = "Invalid length"
-}
-
-local ZNP=require"lib.codec""interfaces.zigbee.cc-znp"
 function dongle:sendpackage(data)
   local l = #data - 2
   assert(l >= 0)
@@ -90,82 +40,8 @@ function dongle:sendpackage(data)
   U.DEBUG(self.subsys.."/znp", "sending request:\n%s", U.hexdump(req))
 end
 
-local task = srv.task:new()
-
-function task:waitmsg(msg, timeout, cond)
-  local t = self.dongle._taskid
-  self.dongle._taskid = self.dongle._taskid + 1
-  U.DEBUG(self.dongle.subsys.."/task/waitmsg", "task %d: waiting for message %s", t, msg)
-
-  local handlers = self.dongle.handler[msg] or {}
-  local timer = timeout and self.dongle.ctx.srv:timer(timeout, function()
-    U.DEBUG(self.dongle.subsys.."/task/waitmsg", "task %d: timeout", t)
-    if handlers[t] then
-      handlers[t] = nil
-      self:continue(false, "timeout")
-    end
-  end)
-  handlers[t] = function(data)
-    if (not cond) or cond(data) then
-      U.DEBUG(self.dongle.subsys.."/task/waitmsg", "task %d: message received", t)
-      handlers[t] = nil
-      if timer then self.dongle.ctx.srv:timer_del(timer) end
-      self:continue(data)
-    end
-  end
-  self.dongle.handler[msg] = handlers
-  return coroutine.yield(true)
-end
-
-function task:areq(areqname, data)
-  U.DEBUG(self.dongle.subsys.."/areq", "sending AREQ %s, data: %s", areqname, U.dump(data))
-  self.dongle:sendpackage(ZNP("AREQ_"..areqname):encode(data))
-end
-
-function task:sreq(sreqname, data, timeout)
-  U.DEBUG(self.dongle.subsys.."/sreq", "sending SREQ %s, data: %s", sreqname, U.dump(data))
-  self.dongle:sendpackage(ZNP("SREQ_"..sreqname):encode(data))
-  return self:waitmsg("SRSP_"..sreqname, timeout or 5.0)
-end
-
-dongle.task = task
-
-function dongle:task_create(func)
-  local t = task:create(func)
-  t.dongle = self
-  return t
-end
-
-function dongle:handle_frame(cmd1, cmd_id, data)
-  local cmd_type = bit.rshift(cmd1, 5)
-  local cmd_subsys = bit.band(cmd1, 0x1F)
-  U.DEBUG(self.subsys,
-    "got MT command: type %s (%d), subsystem %s (0x%02X), command id 0x%02X, data:\n%s",
-    cmd_types[cmd_type] or "unknown", cmd_type,
-    cmd_subsystems[cmd_subsys] or "unknown", cmd_subsys,
-    cmd_id, U.hexdump(data))
-  local o, name, remainder = ZNP:match(data)
-  if not o then
-    U.DEBUG(self.subsys, "no matching parser found.")
-  else
-    U.DEBUG(self.subsys, "got MT command %s, payload:\n%s", name, U.dump(o))
-    if self.handler[name] then
-      for _, h in pairs(self.handler[name]) do
-        h(o)
-      end
-    end
-    if remainder then
-      local r={}
-      while true do local c = remainder(); if not c then break end; table.insert(r, c); end
-      U.DEBUG(self.subsys, "got MT command %s, remaining data in package: %s",
-        name, U.hexdump(r))
-    end
-  end
-end
-
-function dongle:new(ctx, port, baud)
+function dongle:new(port, baud)
   local d = {
-    ctx = ctx,
     ZNP = ZNP,
     subsys = string.format("dongle-cc2530/%s", port),
     handler = {},
@@ -174,8 +50,8 @@ function dongle:new(ctx, port, baud)
   d.port = serial.open(port)
   d.port:set_baud(baud)
 
-  local bufsize = 1024
-  local buf = ffi.new("uint8_t[?]", bufsize) --S.t.buffer(bufsize)
+  setmetatable(d, {__index = self})
+
   local frame_reader = coroutine.wrap(function()
     local readbyte = coroutine.yield
     while true do
@@ -199,29 +75,224 @@ function dongle:new(ctx, port, baud)
       for d = 1, datalen do table.insert(data, readbyte()) end
       -- calculate and check checksum
       if bit.bxor(datalen, unpack(data)) == readbyte() then
-        d:handle_frame(cmd1, cmd2, data)
+        -- success, we have a valid frame
+        local cmd_type = bit.rshift(cmd1, 5)
+        local cmd_subsys = bit.band(cmd1, 0x1F)
+        U.DEBUG(d.subsys,
+          "got MT command: type %s (%d), subsystem %s (0x%02X), command id 0x%02X, data:\n%s",
+          cmd_types[cmd_type] or "unknown", cmd_type,
+          cmd_subsystems[cmd_subsys] or "unknown", cmd_subsys,
+          cmd2, U.hexdump(data))
+        local o, name, remainder = ZNP:match(data)
+        if not o then
+          U.DEBUG(d.subsys, "no matching parser found.")
+        else
+          U.DEBUG(d.subsys, "MT command %s, payload:\n%s", name, U.dump(o))
+          ctx:fire({"CC-ZNP-MT", d, name}, o)
+          if remainder then
+            local r={}
+            while true do local c = remainder(); if not c then break end; table.insert(r, c); end
+            U.DEBUG(d.subsys, "MT command %s, remaining data in package: %s",
+              name, U.hexdump(r))
+          end
+        end
       else
+        -- invalid frame
         U.ERR(d.subsys, "bad FCS, dismissing packet: cmd=%02X%02X, data:\n%s", cmd1, cmd2, U.hexdump(data))
       end
     end
   end)
   frame_reader() -- init
 
-  ctx.srv:add(d.port.fd, nil, {
-    on_readable = function(this)
-      local fd = this.socket:getfd()
-      if fd < 0 then return end
-      local n, err = this.socket:read(buf, bufsize)
-      assert(n>=0 and not err, "reading from socket")
-      for i=0,n-1 do frame_reader(buf[i]) end
-    end,
-    on_error = function(this)
-      U.ERR(d.subsys, "error reading from device, exiting.")
-      os.exit(1)
-    end
-  })
+  ctx.srv:char_reader(d.port.fd, frame_reader)
 
-  return setmetatable(d, {__index = self})
+  -- TODO: no need to have these running in their own tasks?
+  d.on_state_change = ctx:task(function()
+    while true do
+      local _, state = d:waitreq("AREQ_ZDO_STATE_CHANGE_IND")
+      d.state = tonumber(state.State)
+      U.INFO(d.subsys, "device state changed to %d", d.state)
+      -- TODO: fire event (at least on relevant states)
+    end
+  end)
+
+  d.on_end_device_announce = ctx:task(function()
+    while true do
+      local _, enddevice = d:waitreq("AREQ_ZDO_END_DEVICE_ANNCE_IND")
+      U.INFO(d.subsys, "end device announce received, device is %s (short: 0x%04x)", enddevice.IEEEAddr, enddevice.NwkAddr)
+      ctx:fire(zigbee.ev.device_announce, {dongle = d, ieeeaddr = enddevice.IEEEAddr, nwkaddr = enddevice.NwkAddr})
+    end
+  end)
+
+  d.on_leave_network = ctx:task(function()
+    while true do
+      local _, enddevice = d:waitreq(t, "AREQ_ZDO_LEAVE_IND")
+      U.INFO(d.subsys, "device %s left the network, will %srejoin the network", enddevice.IEEEAddr, enddevice.Rejoin == 0 and "not " or "")
+      ctx:fire(zigbee.ev.device_leave, {dongle = d, ieeeaddr = enddevice.IEEEAddr})
+    end
+  end)
+
+  return d
+end
+
+function dongle:areq(areqname, data)
+  U.DEBUG(self.subsys.."/areq", "sending AREQ %s, data: %s", areqname, U.dump(data))
+  self:sendpackage(ZNP("AREQ_"..areqname):encode(data))
+end
+
+function dongle:waitreq(reqname, timeout, cond)
+  return ctx:wait({"CC-ZNP-MT", self, reqname}, cond, timeout)
+end
+
+function dongle:sreq(sreqname, data, timeout)
+  U.DEBUG(self.subsys.."/sreq", "sending SREQ %s, data: %s", sreqname, U.dump(data))
+  self:sendpackage(ZNP("SREQ_"..sreqname):encode(data))
+  return self:waitreq("SRSP_"..sreqname, timeout or 5.0)
+end
+
+local function check_ok(ok, ret)
+  return ok and ret.Status==0, ret
+end
+
+function dongle:provision_device(nwk)
+  U.INFO(self.subsys, "querying node descriptor for device 0x%04x", nwk)
+
+  local devdata = {nwkaddr=nwk}
+
+  local ok, res = check_ok(self:sreq("ZDO_NODE_DESC_REQ", {DstAddr=nwk, NWKAddrOfInterest=nwk}))
+  if not ok then
+    return U.ERR(self.subsys, "error issuing node descriptor query, aborting")
+  end
+
+  local ok, nodedesc = check_ok(self:waitreq("AREQ_ZDO_NODE_DESC_RSP", 1, U.filter{NwkAddrOfInterest=nwk}))
+  if not ok then
+    return U.ERR(self.subsys, "no or bad node descriptor received for device 0x%04x, aborting", nwk)
+  end
+
+  devdata.nodedesc = nodedesc
+
+  U.INFO(self.subsys, "enumerate endpoints for device 0x%04x", nwk)
+  local ok, res = check_ok(self:sreq("ZDO_ACTIVE_EP_REQ", {DstAddr=nwk, NWKAddrOfInterest=nwk}))
+  if not ok then
+    return U.ERR(self.subsys, "error issuing active endpoint query, aborting")
+  end
+
+  local ok, endpoints = check_ok(self:waitreq("AREQ_ZDO_ACTIVE_EP_RSP", 1, U.filter{NwkAddr=nwk}))
+  if not ok then
+    return U.ERR(self.subsys, "no or bad active endpoint info received for device 0x%04x, aborting", nwk)
+  end
+  
+  devdata.eps = {}
+
+  for _, ep in ipairs(endpoints.ActiveEPList) do
+    U.INFO(self.subsys, "querying simple descriptor for EP %d of device 0x%04x", ep, nwk)
+    local ok, res = check_ok(self:sreq("ZDO_SIMPLE_DESC_REQ", {DstAddr=nwk, NWKAddrOfInterest=nwk, Endpoint=ep}))
+    if not ok then
+      return U.ERR(self.subsys, "error issuing simple descriptor query, aborting")
+    end
+
+    local ok, desc = check_ok(self:waitreq("AREQ_ZDO_SIMPLE_DESC_RSP", 1, U.filter{NwkAddr=nwk, Endpoint=ep}))
+    if not ok then
+      return U.ERR(self.subsys, "no or bad simple descriptor received for EP %d of device 0x%04x, aborting", ep, nwk)
+    end
+
+    table.insert(devdata.eps, {
+      Endpoint=ep,
+      DeviceId=desc.DeviceId,
+      DeviceVersion=desc.DeviceVersion,
+      ProfileId=desc.ProfileId,
+      InClusterList=desc.InClusterList,
+      OutClusterList=desc.OutClusterList})
+  end
+
+  return devdata
+end
+
+function dongle:reset(retries)
+  for i = 1, retries or 3 do
+    U.INFO(self.subsys, "resetting device")
+    self:areq("SYS_RESET_REQ")
+    local ok, r = self:waitreq("AREQ_SYS_RESET_IND", 60)
+    if ok then
+      return U.INFO(self.subsys, "reset successful")
+    end
+  end
+  return U.ERR(self.subsys, "could not reset dongle")
+end
+
+function dongle:conf_check(id, value, update)
+  local ok, d = check_ok(self:sreq("ZB_READ_CONFIGURATION", {ConfigId=id}))
+  if not ok then
+    return U.ERR(self.subsys, "error reading config id %04x", id)
+  end
+  if type(value)=="table" then value=string.char(unpack(value)) end
+  local current = string.char(unpack(d.Value))
+  if current~=value then
+    local _, msg = U.INFO(self.subsys, "config mismatch on id %04x, current:\n%sdesired:\n%s", id, U.hexdump(current), U.hexdump(value))
+    if not update then return false, msg end
+    if not check_ok(self:sreq("ZB_WRITE_CONFIGURATION", {ConfigId=id, Value=value})) then
+      return U.ERR(self.subsys, "config id %04x could not be set.", id)
+    end
+  end
+  return true
+end
+
+function dongle:version_check()
+  local ok, info = self:sreq"SYS_PING"
+  if not ok then
+    return U.ERR(self.subsys, "error waiting for ping reply")
+  end
+  if not U.contains_all(info.Capabilities, {"MT_CAP_SYS", "MT_CAP_AF", "MT_CAP_ZDO", "MT_CAP_SAPI", "MT_CAP_UTIL"}) then
+    return U.ERR(self.subsys, "firmware does not support needed features")
+  end
+  return U.INFO(self.subsys, "firmware supports all needed features")
+end
+
+function dongle:subscribe(subsys, enable)
+  if not check_ok(self:sreq("UTIL_CALLBACK_SUB_CMD", {Subsystem={subsys}, Action=enable and {"Enable"} or {"Disable"}})) then
+    return U.ERR(self.subsys, "error (un-)subscribing to events for subsystem %s", subsys)
+  end
+  return U.INFO(self.subsys, "%s to %s events", enable and "subscribed" or "unsubscribed", subsys)
+end
+
+function dongle:initialize_coordinator(reset_conf)
+  if not self:reset()
+    or not self:version_check()
+    or not self:conf_check(0x62, {1,3,5,7,9,11,13,15,0,2,4,6,8,10,12,13}, reset_conf) -- network key
+  then
+    return U.ERR(self.subsys, "error initializing")
+  end
+
+  local ok, extaddr = self:sreq("SYS_GET_EXTADDR")
+  if not ok then
+    return U.ERR(self.subsys, "cannot read external address")
+  end
+  local extaddr = extaddr.ExtAddress
+
+  -- TODO: handle wrong extaddr
+
+  if not self:conf_check(0x87, {0}, reset_conf) -- logical type: coordinator
+    or not self:conf_check(0x83, U.reverse(U.fromhex"1a62"), reset_conf) -- PAN ID
+    or not self:conf_check(0x2D, U.reverse(U.fromhex(extaddr)), reset_conf) -- extended PAN ID
+    or not self:conf_check(0x84, U.reverse(U.fromhex"00000800"), reset_conf) -- Channel 0x800 = 1<<11 = channel 11
+    or not self:conf_check(0x8F, {1}, reset_conf) -- ZDO direct cb
+    or not self:conf_check(0x64, {1}, reset_conf) -- enable security
+    or not self:reset()
+    or not self:subscribe("MT_AF", true)
+    or not self:subscribe("MT_UTIL", true)
+    or not self:subscribe("MT_ZDO", true)
+    or not self:subscribe("MT_SAPI", true)
+    or not self:subscribe("MT_SYS", true)
+    or not self:subscribe("MT_DEBUG", true)
+    or not check_ok(self:sreq("ZDO_STARTUP_FROM_APP",nil,30))
+    -- does this make any sense?:
+    or not check_ok(self:sreq("ZDO_END_DEVICE_ANNCE", {NwkAddr=0, IEEEAddr=extaddr, Capabilities={"ZigbeeRouter","MainPowered","ReceiverOnWhenIdle","AllocateShortAddress"}}))
+    or not check_ok(self:sreq("AF_REGISTER", {EndPoint=1, AppProfId=0x104, AppDeviceId=5, AddDevVer=0, LatencyReq={"NoLatency"}, AppInClusterList={6}, AppOutClusterList={6}}))
+  then
+    return U.ERR(self.subsys, "error initializing")
+  end
+  ctx:fire(zigbee.ev.coordinator_ready, {dongle = self, ieeeaddr = extaddr})
+  return U.INFO(self.subsys, "initialized")
 end
 
 return dongle

@@ -11,14 +11,17 @@ end
 
 util.logoutput = io.stderr
 function util.log(level, subsys, ...)
-  util.logoutput:write(os.date("[%Y-%m-%d %H:%M:%S] <") .. level .. "> " .. subsys .. ": " .. string.format(...) .. "\n")
+  local msg = os.date("[%Y-%m-%d %H:%M:%S] <") .. level .. "> " .. subsys .. ": " .. string.format(...) .. "\n"
+  util.logoutput:write(msg)
+  return msg
 end
-function util.ERR(subsys, ...) return util.log("ERR", subsys, ...) end
-function util.INFO(subsys, ...) return util.log("INF", subsys, ...) end
+function util.ERR(subsys, ...) return false, util.log("ERR", subsys, ...) end
+function util.INFO(subsys, ...) return true, util.log("INF", subsys, ...) end
 function util.DEBUG(subsys, ...)
   if config.debug and string.match(subsys, config.debugsel) then
-    return util.log("DBG", subsys, ...)
+    return true, util.log("DBG", subsys, ...)
   end
+  return true
 end
 
 function util.contains(search_in, search_for)
@@ -53,6 +56,16 @@ function util.filter(f)
     end
     return true
   end
+end
+function util.fromhex(v)
+  d={}
+  for s in string.gmatch(v, "(%x%x)") do table.insert(d, tonumber(s,16)) end
+  return d
+end
+function util.tohex(t)
+  local hex={}
+  for _, c in ipairs(t) do table.insert(hex, string.format("%02x", c)) end
+  return table.concat(hex)
 end
 
 util.dump = require"lib.inspect-lua.inspect"

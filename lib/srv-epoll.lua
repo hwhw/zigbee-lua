@@ -1,5 +1,4 @@
 local U = require"lib.util"
-local C = require"config"
 
 -- LuaJIT builtin libs:
 local ffi = require"ffi"
@@ -7,15 +6,6 @@ local bit = require"bit"
 
 -- LJSyscall
 local S = require"lib.ljsyscall"
-
-local watchdog = function() end
-if C.systemd then
-  -- for now, this means we send watchdog pings
-  local sd = require"lib.systemd"
-  watchdog = function()
-    sd.notify(0, "WATCHDOG=1")
-  end
-end
 
 -- wrapper for epoll()
 local maxevents = 1024
@@ -78,9 +68,7 @@ local poll = {
           elseif ev.OUT and E.cb.on_writable then E.cb.on_writable(E)
           end
         end
-        watchdog()
       end
-      watchdog()
     end
   end
 }
@@ -99,7 +87,7 @@ function srv:tcp_server(address, port, callbacks)
   local addrlen = S.t.socklen1(S.t.sockaddr_storage)
   self:add(sock, S.c.EPOLL.IN, {
     on_error = function(this)
-      U.ERR("srv", "error on TCP server FD, shutting down socket\n")
+      U.ERR("srv", "error on TCP server FD, shutting down socket")
       -- TODO: remove all child FDs? maybe not needed, should fail themselves?
     end,
     on_readable = function(this)
@@ -109,6 +97,24 @@ function srv:tcp_server(address, port, callbacks)
           self:add(client, S.c.EPOLL.IN, callbacks)
         end
       until not a
+    end
+  })
+end
+
+function srv:char_reader(fd, char_reader)
+  local bufsize = 1024
+  local buf = ffi.new("uint8_t[?]", bufsize)
+  self:add(fd, nil, {
+    on_readable = function(this)
+      local fd = this.socket:getfd()
+      if fd < 0 then return end
+      local n, err = this.socket:read(buf, bufsize)
+      assert(n>=0 and not err, "reading from socket")
+      for i=0,n-1 do char_reader(buf[i]) end
+    end,
+    on_error = function(this)
+      U.ERR("srv", "error reading from fd, exiting.")
+      os.exit(1)
     end
   })
 end
@@ -132,26 +138,5 @@ function srv:timer_del(sock)
   self:del(sock)
   sock:close()
 end
-
-local task = U.object:new()
-function task:sleep(timeout)
-  srv:timer(timeout, task.continue, self)
-  coroutine.yield(true)
-end
-function task:run(...)
-  self:continue(self, ...)
-end
-function task:continue(...)
-  U.DEBUG("srv/task", "task %s wakeup", tostring(self))
-  local cont = self.cr(...)
-  if not cont then
-    U.DEBUG("srv/task", "task %s finished", tostring(self))
-  end
-end
-function task:create(func)
-  return self:new({cr = coroutine.wrap(func)})
-end
-
-srv.task = task
 
 return srv

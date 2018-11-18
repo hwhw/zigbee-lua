@@ -1,14 +1,16 @@
+local ctx = require"lib.ctx"
 local U = require"lib.util"
 
 local ffi = require"ffi"
 local S = require"lib.ljsyscall"
 
-local bufsize = 1024
-local buf = S.t.buffer(bufsize)
-
 local tcp_server = {}
 
-function tcp_server:new(ctx, ip, port)
+function tcp_server:new(ip, port)
+  local bufsize = 1024
+  local buf = S.t.buffer(bufsize)
+
+  -- TODO: move specifics into srv-epoll.lua
   return ctx.srv:tcp_server(ip, port, {
     on_readable = function(this)
       local fd = this.socket:getfd()

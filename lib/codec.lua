@@ -89,12 +89,7 @@ local t_arr = def:new()
 function t_arr:encode(v, putc)
   local d=v
   if type(v)=="string" then
-    if self.ashex then
-      d={}
-      for s in string.gmatch(v, "(%x%x)") do table.insert(d, tonumber(s,16)) end
-    else
-      d={string.byte(v,1,#v)}
-    end
+    d = self.ashex and U.fromhex(v) or {string.byte(v,1,#v)}
   end
   if self.length then
     for i=#d+1, self.length do table.insert(d, 0) end
@@ -120,15 +115,9 @@ function t_arr:decode(getc)
   if self.reverse then
     v=U.reverse(v)
   end
-  if self.asstring then
-    return string.char(unpack(v))
-  elseif self.ashex then
-    local hex={}
-    for _, c in ipairs(v) do table.insert(hex, string.format("%02x", c)) end
-    return table.concat(hex)
-  else
-    return v
-  end
+  return self.asstring and string.char(unpack(v))
+    or self.ashex and U.tohex(v)
+    or v
 end
 
 local t_rst = def:new()
