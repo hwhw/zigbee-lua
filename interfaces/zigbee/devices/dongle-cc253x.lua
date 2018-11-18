@@ -143,6 +143,7 @@ function dongle:new(port, baud)
       if profile then
         ctx:fire(zigbee.ev.af_message, {
           --dongle = d,
+          data = msg.Data,
           src = msg.SrcAddr,
           clusterid = msg.ClusterId,
           localendpoint = msg.DstEndpoint,
