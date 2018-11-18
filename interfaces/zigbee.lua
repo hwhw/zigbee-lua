@@ -10,6 +10,7 @@ local function ev(eventname) zigbee.ev[eventname] = {z, eventname} end
 ev"coordinator_ready"
 ev"device_announce"
 ev"device_leave"
+ev"af_message"
 
 local devdb = U.object:new()
 function devdb:open(filename)
@@ -76,6 +77,13 @@ function zigbee:handle()
           U.INFO(z, "already provisioning device %s", data.ieeeaddr)
         end
       end
+    end
+  end)
+  ctx:task(function()
+    while true do
+      local ok, msg = ctx:wait(self.ev.af_message)
+      if not ok then return U.ERR(z, "error waiting for AF messages") end
+      U.INFO(z, "got AF message: %s", U.dump(msg))
     end
   end)
 end

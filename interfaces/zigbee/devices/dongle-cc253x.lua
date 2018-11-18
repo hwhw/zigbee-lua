@@ -132,6 +132,27 @@ function dongle:new(port, baud)
     end
   end)
 
+  d.on_af_incoming_msg = ctx:task(function()
+    while true do
+      local _, msg = d:waitreq("AREQ_AF_INCOMING_MSG")
+      U.INFO(d.subsys.."/af", "incoming message from 0x%04x, clusterid 0x%04x, dst EP %d", msg.SrcAddr, msg.ClusterId, msg.DstEndpoint)
+      local profile = false
+      if msg.DstEndpoint == 1 then
+        profile = 0x104
+      end
+      if profile then
+        ctx:fire(zigbee.ev.af_message, {
+          --dongle = d,
+          src = msg.SrcAddr,
+          clusterid = msg.ClusterId,
+          localendpoint = msg.DstEndpoint,
+          srcendpoint = msg.SrcEndpoint,
+          profile = profile,
+          linkquality = msg.LinkQuality
+        })
+      end
+    end
+  end)
   return d
 end
 

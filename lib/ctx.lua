@@ -26,6 +26,7 @@ end
 function ctx:fire(event, eventparams)
   local handlers = {}
   handlersel(handlers, self.tasks_waiting, event, 1)
+  --U.DEBUG("ctx/event", "event fired: %s", U.dump(event))
   for _, handler in ipairs(handlers) do
     if not handler.cond or handler.cond(eventparams) then
       handler.callback(event, eventparams)
@@ -83,9 +84,13 @@ function ctx:wait(event, cond, timeout)
   end)
 
   local handler = event and self:on(event, cond, function(e, ep)
+    --U.DEBUG("ctx/event", "event %s handled by task %s", U.dump(event), tostring(cr))
     if timer then ctx.srv:timer_del(timer) end
     self:task_continue(cr, e, ep)
   end)
+  if handler then
+    --U.DEBUG("ctx/event", "event %s waited for by task %s", U.dump(event), tostring(cr))
+  end
 
   U.DEBUG("ctx/task", "task %s waiting", tostring(cr))
   local ret = {coroutine.yield(true)}
