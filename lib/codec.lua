@@ -31,21 +31,22 @@ function def:encode(o, putc)
     putc = function(byte) table.insert(ret, byte) end
   end
   for _, s in ipairs(self) do
-    s:encode(o[s._name], putc)
+    s:encode(o, putc)
   end
   return ret
 end
-function def:decode(getc)
+function def:decode(getc, o)
   if type(getc)~="function" then
     local data=getc
     local dptr=data[0] and 0 or 1
     getc = function(peek) local v=data[dptr]; if not peek then dptr=dptr+1 end; return v; end
   end
-  local o = {}
+  local this = {}
   for _, s in ipairs(self) do
-    o[s._name] = s:decode(getc)
+    s:decode(getc, this)
   end
-  return o, getc(true) and getc
+  if o then o[self._name] = this end
+  return this, getc(true) and getc
 end
 
 local t_msg = def:new{__call=def.create}
@@ -66,9 +67,10 @@ function t_map:iter()
     end
   end
 end
-function t_map:encode(v, putc)
+function t_map:encode(o, putc)
+  local values = o[self._name]
+  values = type(values)=="table" and values or {values}
   local ret = 0
-  local values = type(v)=="table" and v or {v}
   for _, v in ipairs(values) do
     for name, value, mask in self:iter() do
       if name==v then ret = bit.bor(ret, value) end
@@ -76,35 +78,35 @@ function t_map:encode(v, putc)
   end
   self.type:put(ret, putc)
 end
-function t_map:decode(getc)
+function t_map:decode(getc, o)
   local v = self.type:get(getc)
   local ret = {}
   for name, value, mask in self:iter() do
     if bit.band(v, mask)==value then table.insert(ret, name) end
   end
-  return (#ret == 1) and ret[1] or ret
+  o[self._name] = (#ret == 1) and ret[1] or ret
 end
 
 local t_arr = def:new()
-function t_arr:encode(v, putc)
-  local d=v
+function t_arr:encode(o, putc)
+  local v=o[self._name]
   if type(v)=="string" then
-    d = self.ashex and U.fromhex(v) or {string.byte(v,1,#v)}
+    v = self.ashex and U.fromhex(v) or {string.byte(v,1,#v)}
   end
   if self.length then
-    for i=#d+1, self.length do table.insert(d, 0) end
+    for i=#v+1, self.length do table.insert(v, 0) end
   end
   if self.reverse then
-    d=U.reverse(d)
+    v=U.reverse(v)
   end
   if self.counter then
-    self.counter:put(#d, putc)
+    self.counter:put(#v, putc)
   end
-  for _, e in ipairs(d) do
+  for _, e in ipairs(v) do
     self.type:put(e, putc)
   end
 end
-function t_arr:decode(getc)
+function t_arr:decode(getc, o)
   assert(self.counter or self.length)
   local v = {}
   local count = self.counter and self.counter:get(getc) or self.length
@@ -115,30 +117,49 @@ function t_arr:decode(getc)
   if self.reverse then
     v=U.reverse(v)
   end
-  return self.asstring and string.char(unpack(v))
+  o[self._name] = self.asstring and string.char(unpack(v))
     or self.ashex and U.tohex(v)
     or v
 end
 
+local t_opt = def:new()
+function t_opt:encode(o, putc)
+  assert(self.when)
+  if self.when(o) then
+    for _, s in ipairs(self) do
+      s:encode(o, putc)
+    end
+  end
+end
+function t_opt:decode(getc, o)
+  assert(self.when)
+  if self.when(o) then
+    for _, s in ipairs(self) do
+      s:decode(getc, o)
+    end
+  end
+end
+
 local t_rst = def:new()
-function t_rst:decode(getc)
+function t_rst:decode(getc, o)
   local v = {}
   while true do
     local input=getc()
     if not input then return v end
     table.insert(v, input)
   end
+  o[self._name] = v
 end
 
 local t_primitive = def:new()
-function t_primitive:encode(v, putc)
-  v = self.const or v or self.default
+function t_primitive:encode(o, putc)
+  local v = self.const or o[self._name] or self.default
   self:put(assert(v), putc)
 end
-function t_primitive:decode(getc)
+function t_primitive:decode(getc, o)
   local v = self:get(getc)
   assert(not self.const or v==self.const)
-  return v
+  o[self._name] = v
 end
 
 local t_U8 = t_primitive:new()
@@ -153,28 +174,22 @@ local t_U32 = t_primitive:new()
 function t_U32:put(v, putc) putc(bit.band(v,0xFF)) putc(bit.band(bit.rshift(v,8),0xFF)) putc(bit.band(bit.rshift(v,16),0xFF)) putc(bit.rshift(v,24)) end
 function t_U32:get(getc) return bit.bor(assert(getc()), bit.lshift(assert(getc()), 8), bit.lshift(assert(getc()), 16), bit.lshift(assert(getc()), 24)) end
 
--- helper function to parse binary numbers
-local function B(bstr, pos, acc)
-  pos=pos or 1
-  acc=acc or 0
-  if pos > #bstr then
-    return acc
-  end
-  return B(bstr, pos+1, bit.bor(bit.lshift(acc, 1), string.byte(bstr, pos) == 0x31 and 1 or 0))
-end
-
 -- parse codec definition
 local function parse(luadef)
   local t_msg_i = t_msg:new{_registry={}}
   local t_map_i = t_map:new{_registry={}}
 
   local ctx = {
+    -- typerefs
     t_U8 = t_U8, t_U16 = t_U16, t_U32 = t_U32,
-    B = B,
+    -- utility functions
+    B = U.B, contains = U.contains, contains_all = U.contains_all,
+    -- definition directives
     msg = function(...) return t_msg_i:create(...) end,
     map = function(...) return t_map_i:create(...) end,
     arr = function(...) return t_arr:create(...) end,
     rst = function(...) return t_rst:create(...) end,
+    opt = function(...) return t_opt:create(...) end,
     U8 = function(...) return t_U8:create(...) end,
     U16 = function(...) return t_U16:create(...) end,
     U32 = function(...) return t_U32:create(...) end,

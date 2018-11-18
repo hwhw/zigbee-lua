@@ -1,5 +1,6 @@
 local util = {}
 local config = require"config"
+local bit = require"bit"
 
 -- assert wrapper for proper error messages - about the same as
 -- the normal Lua assert, except that the normal one does not do
@@ -69,6 +70,17 @@ function util.tohex(t)
 end
 
 util.dump = require"lib.inspect-lua.inspect"
+
+-- helper function to parse binary numbers
+function util.B(bstr, pos, acc)
+  pos=pos or 1
+  acc=acc or 0
+  if pos > #bstr then
+    return acc
+  end
+  return util.B(bstr, pos+1, bit.bor(bit.lshift(acc, 1), string.byte(bstr, pos) == 0x31 and 1 or 0))
+end
+
 
 function util.hexdump(buffer)
   local p = 1
