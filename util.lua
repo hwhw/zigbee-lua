@@ -1,0 +1,97 @@
+local util = {}
+local config = require"config"
+
+-- assert wrapper for proper error messages - about the same as
+-- the normal Lua assert, except that the normal one does not do
+-- the tostring() step
+function util.assert(cond, s, ...)
+	if not cond then error(tostring(s)) end
+	return cond, s, ...
+end
+
+util.logoutput = io.stderr
+function util.log(level, subsys, ...)
+  util.logoutput:write(os.date("[%Y-%m-%d %H:%M:%S] <") .. level .. "> " .. subsys .. ": " .. string.format(...) .. "\n")
+end
+function util.ERR(subsys, ...) return util.log("ERR", subsys, ...) end
+function util.INFO(subsys, ...) return util.log("INF", subsys, ...) end
+function util.DEBUG(subsys, ...)
+  if config.debug and string.match(subsys, config.debugsel) then
+    return util.log("DBG", subsys, ...)
+  end
+end
+
+function util.contains(search_in, search_for)
+  local c=0
+  for _, h in pairs(search_in) do
+    for _, n in pairs(search_for) do
+      if h==n then
+        c = c+1
+        break
+      end
+    end
+  end
+  return c>0 and c
+end
+function util.contains_all(search_in, search_for)
+  local n = util.contains(search_in, search_for)
+  return n and n == #search_for
+end
+function util.list_compare(search_in, search_for)
+  local n = util.contains(search_in, search_for)
+  return n and n == #search_for and n == #search_in
+end
+function util.reverse(t)
+  local n={}
+  for i=#t, 1, -1 do table.insert(n, t[i]) end
+  return n
+end
+function util.filter(f)
+  return function(t)
+    for k, v in pairs(f) do
+      if t[k] ~= v then return false end
+    end
+    return true
+  end
+end
+
+util.dump = require"inspect-lua.inspect"
+
+function util.hexdump(buffer)
+  local p = 1
+  local acc = {}
+  local clear = ""
+  while p <= #buffer do
+    local b = type(buffer)=="string" and string.byte(buffer, p) or buffer[p]
+    table.insert(acc, string.format("%02X ", b))
+    if b >= 0x20 and b < 0x7E then
+      clear = clear .. string.char(b)
+    else
+      clear = clear .. "."
+    end
+    if p == #buffer then
+      local mod = p % 16
+      if mod > 0 then
+        for i = mod, 15 do table.insert(acc, "   ") end
+      end
+    end
+    if p % 16 == 0 or p == #buffer then
+      table.insert(acc, "  ")
+      table.insert(acc, clear)
+      table.insert(acc, "\n")
+      clear = ""
+    end
+    p = p + 1
+  end
+  return table.concat(acc)
+end
+
+util.object = {}
+function util.object:new(o)
+  o = o or {}
+  setmetatable(o, self)
+  self.__index = self
+  return o
+end
+
+return util

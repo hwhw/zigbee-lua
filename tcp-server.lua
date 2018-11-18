@@ -1,0 +1,54 @@
+local U = require"util"
+
+local ffi = require"ffi"
+local S = require"ljsyscall"
+
+local bufsize = 1024
+local buf = S.t.buffer(bufsize)
+
+local tcp_server = {}
+
+function tcp_server:new(ctx, ip, port)
+  return ctx.srv:tcp_server(ip, port, {
+    on_readable = function(this)
+      local fd = this.socket:getfd()
+      if fd < 0 then
+        -- FD already closed?
+        return
+      end
+      local n, err = this.socket:read(buf, bufsize)
+      if n == 0 then
+        ctx.srv:del(this.socket)
+        this.socket:shutdown("rd")
+        if this.data then
+          local n, v
+          local f, err = load(function()
+            n, v = next(this.data, n)
+            return v
+          end, "remote Lua code")
+          if f then
+            f, err = xpcall(f, debug.traceback, ctx, this.socket)
+          end
+          if not f then
+            this.socket:write(string.format("ERROR: %s\n", err))
+            U.DEBUG(string.format("tcp_server/%d", fd), "ERROR: %s\n", err)
+          end
+        end
+        this.socket:shutdown("rdwr")
+        this.socket:close()
+      elseif n then
+        if not this.data then this.data = {} end
+        local data = ffi.string(buf, n)
+        table.insert(this.data, data)
+        U.DEBUG(string.format("tcp_server/%d", fd), "data on socket, got %d bytes:\n%s", n, data)
+      end
+    end,
+    on_error = function(this)
+      U.INFO(string.format("tcp_server/%d", fd), "error or EOF for connection")
+      ctx.srv:del(this.socket)
+      this.socket:close()
+    end
+  })
+end
+
+return tcp_server
