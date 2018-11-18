@@ -2,6 +2,8 @@ Zigbee-lua
 
 An early stage of a Zigbee control framework.
 
+Supposed to run via LuaJIT (uses ffi, bitop)
+
 Supported Zigbee interfaces:
 * CC253x (so far, only CC2531 is being used for testing) via ZNP
 
