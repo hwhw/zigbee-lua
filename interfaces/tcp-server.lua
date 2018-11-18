@@ -1,7 +1,7 @@
-local U = require"util"
+local U = require"lib.util"
 
 local ffi = require"ffi"
-local S = require"ljsyscall"
+local S = require"lib.ljsyscall"
 
 local bufsize = 1024
 local buf = S.t.buffer(bufsize)

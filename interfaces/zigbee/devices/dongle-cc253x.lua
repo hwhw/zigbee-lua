@@ -1,10 +1,10 @@
 local C = require"config"
-local U = require"util"
+local U = require"lib.util"
 local ffi = require"ffi"
 local bit = require"bit"
-local S = require"ljsyscall"
-local serial = require"serial"
-local srv = require"srv"
+local S = require"lib.ljsyscall"
+local serial = require"lib.serial"
+local srv = require"lib.srv"
 
 local dongle = {_taskid=0}
 
@@ -80,7 +80,7 @@ local sreq_error_codes = {
   [0x04] = "Invalid length"
 }
 
-local ZNP=require"codec""znp"
+local ZNP=require"lib.codec""interfaces.zigbee.cc-znp"
 function dongle:sendpackage(data)
   local l = #data - 2
   assert(l >= 0)

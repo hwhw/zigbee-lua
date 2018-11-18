@@ -1,6 +1,6 @@
 local ffi = require"ffi"
-local S = require"ljsyscall"
-local U = require"util"
+local S = require"lib.ljsyscall"
+local U = require"lib.util"
 
 local serial = {}
 

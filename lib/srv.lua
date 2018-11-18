@@ -1,4 +1,4 @@
-local U = require"util"
+local U = require"lib.util"
 local C = require"config"
 
 -- LuaJIT builtin libs:
@@ -6,12 +6,12 @@ local ffi = require"ffi"
 local bit = require"bit"
 
 -- LJSyscall
-local S = require"ljsyscall"
+local S = require"lib.ljsyscall"
 
 local watchdog = function() end
 if C.systemd then
   -- for now, this means we send watchdog pings
-  local sd = require"systemd"
+  local sd = require"lib.systemd"
   watchdog = function()
     sd.notify(0, "WATCHDOG=1")
   end

@@ -1,6 +1,6 @@
 local ffi = require"ffi"
 local bit = require"bit"
-local U = require"util"
+local U = require"lib.util"
 local object = U.object
 
 local def = object:new()

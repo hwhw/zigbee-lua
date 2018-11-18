@@ -1,12 +1,12 @@
 [submodule "ljsyscall"]
-	path = ljsyscall
+	path = lib/ljsyscall
 	url = https://github.com/justincormack/ljsyscall
 [submodule "inspect.lua"]
-	path = inspect-lua
+	path = lib/inspect-lua
 	url = https://github.com/kikito/inspect.lua.git
 [submodule "LuLPeg"]
-	path = LuLPeg
+	path = lib/LuLPeg
 	url = https://github.com/pygy/LuLPeg.git
 [submodule "json.lua"]
-	path = json-lua
+	path = lib/json-lua
 	url = https://github.com/rxi/json.lua

@@ -55,7 +55,7 @@ function util.filter(f)
   end
 end
 
-util.dump = require"inspect-lua.inspect"
+util.dump = require"lib.inspect-lua.inspect"
 
 function util.hexdump(buffer)
   local p = 1

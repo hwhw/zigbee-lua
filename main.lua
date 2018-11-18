@@ -1,12 +1,12 @@
 local C = require"config"
-local U = require"util"
+local U = require"lib.util"
 local ffi = require"ffi"
 
-local ctx = {srv=require"srv"}
-local tcp_server = require"tcp-server"
+local ctx = {srv=require"lib.srv"}
+local tcp_server = require"interfaces.tcp-server"
 tcp_server:new(ctx, '127.0.0.1', arg[1] or 16580)
 
-local cc2530 = require"dongle-cc2530"
+local cc2530 = require"interfaces.zigbee.devices.dongle-cc253x"
 ctx.dongle = cc2530:new(ctx, arg[2] or C.port, C.baud)
 
 ----------------------------------------------------------------------
