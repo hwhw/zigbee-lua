@@ -10,6 +10,7 @@ function util.assert(cond, s, ...)
 	return cond, s, ...
 end
 
+-- logging:
 util.logoutput = io.stderr
 function util.log(level, subsys, ...)
   local msg = os.date("[%Y-%m-%d %H:%M:%S] <") .. level .. "> " .. subsys .. ": " .. string.format(...) .. "\n"
@@ -25,6 +26,7 @@ function util.DEBUG(subsys, ...)
   return true
 end
 
+-- tools for tables:
 function util.contains(search_in, search_for)
   local c=0
   for _, h in pairs(search_in) do

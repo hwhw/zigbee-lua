@@ -4,7 +4,7 @@ local ffi = require"ffi"
 local bit = require"bit"
 local S = require"lib.ljsyscall"
 local serial = require"lib.serial"
-local ZNP = require"lib.codec""interfaces.zigbee.cc-znp"
+local ZNP = require"lib.codec"(require"interfaces.zigbee.cc-znp")
 local zigbee = require"interfaces.zigbee"
 
 local dongle = {}
