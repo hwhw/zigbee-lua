@@ -221,7 +221,7 @@ function t_genint:get(getc)
   local v
   for i=0,self.bytes-1 do v=getc() p[i]=v end
   if self.signed and v>0x7F then for i=self.bytes,7 do p[i]=0xFF end end
-  return ret[0]
+  return tonumber(ret[0])
 end
 
 local t_int = t_genint:new{signed=true}

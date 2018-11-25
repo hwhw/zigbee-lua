@@ -4,6 +4,7 @@ local json = require"lib.json-lua.json"
 
 local z = "Zigbee"
 local zigbee = {ev = {}}
+local ZCL=(require"lib.codec")(require"interfaces.zigbee.zcl")
 
 -- declare events
 local function ev(eventname) zigbee.ev[eventname] = {z, eventname} end
@@ -84,6 +85,7 @@ function zigbee:handle()
       local ok, msg = ctx:wait(self.ev.af_message)
       if not ok then return U.ERR(z, "error waiting for AF messages") end
       U.INFO(z, "got AF message: %s", U.dump(msg))
+      U.DEBUG(z, "parsed: %s", U.dump(ZCL"Frame":decode(msg.data)))
     end
   end)
 end

@@ -44,7 +44,7 @@ map{"Status", type=t_U8, values={
 }}
 
 local function clusterlocal(id, name)
-  return opt {nil, when=function(v,_,ctx) return contains(v.FrameControl, {"FrameTypeLocal"}) and ctx.ClusterId==id end, msg{ref=name.."ClusterFrame"}},
+  return opt {nil, when=function(v,_,ctx) return contains(v.FrameControl, {"FrameTypeLocal"}) and ctx.ClusterId==id end, msg{ref=name.."ClusterFrame"}}
 end
 msg{"Frame",
   map {"FrameControl", type=t_U8, values={
