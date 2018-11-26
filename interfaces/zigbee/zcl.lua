@@ -266,131 +266,140 @@ msg{"Attribute",
 
 
 msg{"ReadAttributes",
-  U16 {"AttributeIdentifier"},
-  more_of"ReadAttributes"
+  arr {"AttributeIdentifiers", type=t_U16}
 }
 
 msg{"ReadAttributesResponse",
-  U16 {"AttributeIdentifier"},
-  map {ref="Status"},
-  opt {nil, when=function(v) return v.Status=="SUCCESS" end, msg{ref="Attribute"}},
-  more_of"ReadAttributesResponse"
+  arr {"ReadAttributeStatusRecords",
+    U16 {"AttributeIdentifier"},
+    map {ref="Status"},
+    opt {nil, when=function(v) return v.Status=="SUCCESS" end, msg{ref="Attribute"}}
+  }
 }
 
 msg{"WriteAttributes",
-  U16 {"AttributeIdentifier"},
-  msg {ref="Attribute"},
-  more_of"WriteAttributes"
+  arr {"WriteAttributeRecords",
+    U16 {"AttributeIdentifier"},
+    msg {ref="Attribute"}
+  }
 }
 
 msg{"WriteAttributesUndivided",
-  U16 {"AttributeIdentifier"},
-  msg {ref="Attribute"},
-  more_of"WriteAttributesUndivided"
+  arr {"WriteAttributeRecords",
+    U16 {"AttributeIdentifier"},
+    msg {ref="Attribute"}
+  }
 }
 
 msg{"WriteAttributesResponse",
-  map {ref="Status"},
-  opt {nil, when=more_data("AttributeIdentifier"), U16{"AttributeIdentifier"}},
-  more_of"WriteAttributesResponse"
+  arr {"WriteAttributeStatusRecords",
+    map {ref="Status"},
+    opt {nil, when=more_data("AttributeIdentifier"), U16{"AttributeIdentifier"}}
+  }
 }
 
 msg{"WriteAttributesNoResponse",
-  U16 {"AttributeIdentifier"},
-  msg {ref="Attribute"},
-  more_of"WriteAttributesNoResponse"
+  arr {"WriteAttributeRecords",
+    U16 {"AttributeIdentifier"},
+    msg {ref="Attribute"}
+  }
 }
 
 msg{"ConfigureReporting",
-  U8  {"Direction", default=0},
-  U16 {"AttributeIdentifier"},
-  opt {nil, when=function(v) return v.Direction==0 end,
-    map {ref="Type"},
-    U16 {"MinimumReportingInterval"},
-    U16 {"MaximumReportingInterval"},
-    iftype("uint8", U8{"uint8"}),
-    iftype("uint16", U16{"uint16"}),
-    iftype("uint24", U24{"uint24"}),
-    iftype("uint32", U32{"uint32"}),
-    iftype("uint40", U40{"uint40"}),
-    iftype("uint48", U48{"uint48"}),
-    iftype("uint56", U56{"uint56"}),
-    iftype("uint64", U64{"uint64"}),
-    iftype("int8", I8{"int8"}),
-    iftype("int16", I16{"int16"}),
-    iftype("int24", I24{"int24"}),
-    iftype("int32", I32{"int32"}),
-    iftype("int40", I40{"int40"}),
-    iftype("int48", I48{"int48"}),
-    iftype("int56", I56{"int56"}),
-    iftype("int64", I64{"int64"}),
-    iftype("semi", U16{"semi", const=0xFFFF}), -- not yet implemented!
-    iftype("single", float{"single"}),
-    iftype("double", double{"double"}),
-    iftype("ToD", U32{"ToD"}),
-    iftype("date", U32{"date"}),
-    iftype("UTC", U32{"UTC"})
-  },
-  opt {nil, when=function(v) return v.Direction==1 end,
-    U16 {"TimeoutPeriod"}
-  },
-  more_of"ConfigureReporting"
+  arr {"AttributeReportingConfigurationRecords",
+    U8  {"Direction", default=0},
+    U16 {"AttributeIdentifier"},
+    opt {nil, when=function(v) return v.Direction==0 end,
+      map {ref="Type"},
+      U16 {"MinimumReportingInterval"},
+      U16 {"MaximumReportingInterval"},
+      iftype("uint8", U8{"uint8"}),
+      iftype("uint16", U16{"uint16"}),
+      iftype("uint24", U24{"uint24"}),
+      iftype("uint32", U32{"uint32"}),
+      iftype("uint40", U40{"uint40"}),
+      iftype("uint48", U48{"uint48"}),
+      iftype("uint56", U56{"uint56"}),
+      iftype("uint64", U64{"uint64"}),
+      iftype("int8", I8{"int8"}),
+      iftype("int16", I16{"int16"}),
+      iftype("int24", I24{"int24"}),
+      iftype("int32", I32{"int32"}),
+      iftype("int40", I40{"int40"}),
+      iftype("int48", I48{"int48"}),
+      iftype("int56", I56{"int56"}),
+      iftype("int64", I64{"int64"}),
+      iftype("semi", U16{"semi", const=0xFFFF}), -- not yet implemented!
+      iftype("single", float{"single"}),
+      iftype("double", double{"double"}),
+      iftype("ToD", U32{"ToD"}),
+      iftype("date", U32{"date"}),
+      iftype("UTC", U32{"UTC"})
+    },
+    opt {nil, when=function(v) return v.Direction==1 end,
+      U16 {"TimeoutPeriod"}
+    }
+  }
 }
 
 msg{"ConfigureReportingResponse",
-  map {ref="Status"},
-  U8  {"Direction", default=0},
-  U16 {"AttributeIdentifier"},
-  more_of"ConfigureReportingResponse"
+  arr {"AttributeStatusRecords",
+    map {ref="Status"},
+    U8  {"Direction", default=0},
+    U16 {"AttributeIdentifier"}
+  }
 }
 
 msg{"ReadReportingConfiguration",
-  U8  {"Direction", default=0},
-  U16 {"AttributeIdentifier"},
-  more_of"ReadReportingConfiguration"
+  arr {"AttributeRecords",
+    U8  {"Direction", default=0},
+    U16 {"AttributeIdentifier"}
+  }
 }
 
 msg{"ReadReportingConfigurationResponse",
-  map {ref="Status"},
-  U8  {"Direction", default=0},
-  U16 {"AttributeIdentifier"},
-  opt {nil, when=function(v) return v.Direction==0 end,
-    map {ref="Type"},
-    U16 {"MinimumReportingInterval"},
-    U16 {"MaximumReportingInterval"},
-    iftype("uint8", U8{"uint8"}),
-    iftype("uint16", U16{"uint16"}),
-    iftype("uint24", U24{"uint24"}),
-    iftype("uint32", U32{"uint32"}),
-    iftype("uint40", U40{"uint40"}),
-    iftype("uint48", U48{"uint48"}),
-    iftype("uint56", U56{"uint56"}),
-    iftype("uint64", U64{"uint64"}),
-    iftype("int8", I8{"int8"}),
-    iftype("int16", I16{"int16"}),
-    iftype("int24", I24{"int24"}),
-    iftype("int32", I32{"int32"}),
-    iftype("int40", I40{"int40"}),
-    iftype("int48", I48{"int48"}),
-    iftype("int56", I56{"int56"}),
-    iftype("int64", I64{"int64"}),
-    iftype("semi", U16{"semi", const=0xFFFF}), -- not yet implemented!
-    iftype("single", float{"single"}),
-    iftype("double", double{"double"}),
-    iftype("ToD", U32{"ToD"}),
-    iftype("date", U32{"date"}),
-    iftype("UTC", U32{"UTC"})
-  },
-  opt {nil, when=function(v) return v.Direction==1 end,
-    U16 {"TimeoutPeriod"}
-  },
-  more_of"ReadReportingConfigurationResponse"
+  arr {"AttributeReportingConfigurationRecords",
+    map {ref="Status"},
+    U8  {"Direction", default=0},
+    U16 {"AttributeIdentifier"},
+    opt {nil, when=function(v) return v.Direction==0 end,
+      map {ref="Type"},
+      U16 {"MinimumReportingInterval"},
+      U16 {"MaximumReportingInterval"},
+      iftype("uint8", U8{"uint8"}),
+      iftype("uint16", U16{"uint16"}),
+      iftype("uint24", U24{"uint24"}),
+      iftype("uint32", U32{"uint32"}),
+      iftype("uint40", U40{"uint40"}),
+      iftype("uint48", U48{"uint48"}),
+      iftype("uint56", U56{"uint56"}),
+      iftype("uint64", U64{"uint64"}),
+      iftype("int8", I8{"int8"}),
+      iftype("int16", I16{"int16"}),
+      iftype("int24", I24{"int24"}),
+      iftype("int32", I32{"int32"}),
+      iftype("int40", I40{"int40"}),
+      iftype("int48", I48{"int48"}),
+      iftype("int56", I56{"int56"}),
+      iftype("int64", I64{"int64"}),
+      iftype("semi", U16{"semi", const=0xFFFF}), -- not yet implemented!
+      iftype("single", float{"single"}),
+      iftype("double", double{"double"}),
+      iftype("ToD", U32{"ToD"}),
+      iftype("date", U32{"date"}),
+      iftype("UTC", U32{"UTC"})
+    },
+    opt {nil, when=function(v) return v.Direction==1 end,
+      U16 {"TimeoutPeriod"}
+    }
+  }
 }
 
 msg{"ReportAttributes",
-  U16 {"AttributeIdentifier"},
-  msg {ref="Attribute"},
-  more_of"ReportAttributes"
+  arr {"AttributeReports",
+    U16 {"AttributeIdentifier"},
+    msg {ref="Attribute"}
+  }
 }
 
 msg{"DefaultResponse",
@@ -405,18 +414,17 @@ msg{"DiscoverAttributes",
 
 msg{"DiscoverAttributesResponse",
   bool{"DiscoveryComplete"},
-  msg{ref="AttributeInformation"}
-}
-msg{"AttributeInformation",
-  U16 {"AttributeIdentifier"},
-  map {ref="Type"},
-  more_of"AttributeInformation"
+  arr {"AttributeInformations",
+    U16 {"AttributeIdentifier"},
+    map {ref="Type"}
+  }
 }
 
 msg{"ReadAttributesStructured",
-  U16 {"AttributeIdentifier"},
-  msg {ref="Selector"},
-  more_of"ReadAttributesStructured"
+  arr {"AttributeSelectors",
+    U16 {"AttributeIdentifier"},
+    msg {ref="Selector"}
+  }
 }
 msg{"Selector",
   -- TODO: implement special behaviour for arrays, structs, sets, bags
@@ -424,17 +432,19 @@ msg{"Selector",
 }
 
 msg{"WriteAttributesStructured",
-  U16 {"AttributeIdentifier"},
-  msg {ref="Selector"},
-  msg {ref="Attribute"},
-  more_of"WriteAttributesStructured"
+  arr {"WriteAttributeRecords",
+    U16 {"AttributeIdentifier"},
+    msg {ref="Selector"},
+    msg {ref="Attribute"}
+  }
 }
 
 msg{"WriteAttributesStructuredResponse",
-  map {ref="Status"},
-  U16 {"AttributeIdentifier"},
-  msg {ref="Selector"},
-  more_of"WriteAttributesStructuredResponse"
+  arr {"WriteAttributeStatusRecords",
+    map {ref="Status"},
+    U16 {"AttributeIdentifier"},
+    msg {ref="Selector"}
+  }
 }
 
 msg{"DiscoverCommandsReceived",
@@ -444,11 +454,7 @@ msg{"DiscoverCommandsReceived",
 
 msg{"DiscoverCommandsReceivedResponse",
   bool{"DiscoveryComplete"},
-  msg{ref="NumCommandIdentifier"}
-}
-msg{"NumCommandIdentifier",
-  U8  {"Identifier"},
-  more_of"NumCommandIdentifier"
+  arr {"CommandIdentifiers", type=t_U8}
 }
 
 msg{"DiscoverCommandsGenerated",
@@ -458,7 +464,7 @@ msg{"DiscoverCommandsGenerated",
 
 msg{"DiscoverCommandsGeneratedResponse",
   bool{"DiscoveryComplete"},
-  msg{ref="NumCommandIdentifier"}
+  arr {"CommandIdentifiers", type=t_U8}
 }
 
 msg{"DiscoverAttributesExtended",
@@ -468,22 +474,18 @@ msg{"DiscoverAttributesExtended",
 
 msg{"DiscoverAttributesExtendedResponse",
   bool{"DiscoveryComplete"},
-  msg{ref="ExtendedAttributeInformation"}
-}
-msg{"ExtendedAttributeInformation",
-  U16 {"AttributeIdentifier"},
-  map {ref="Type"},
-  map {"AttributeAccessControl", type=t_U8, values={
-    {"Readable",   B"001", B"111"},
-    {"Writable",   B"010", B"111"},
-    {"Reportable", B"100", B"111"}}},
-  more_of"AttributeInformation"
+  arr {"ExtendedAttributeInformations",
+    U16 {"AttributeIdentifier"},
+    map {ref="Type"},
+    map {"AttributeAccessControl", type=t_U8, values={
+      {"Readable",   B"001", B"111"},
+      {"Writable",   B"010", B"111"},
+      {"Reportable", B"100", B"111"}}}
+  }
 }
 
 msg{"BasicClusterFrame",
   U8  {"CommandIdentifier"}
 }
-
-
 
 end

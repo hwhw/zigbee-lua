@@ -35,7 +35,7 @@ function def:deref_iter()
     local v = t[i]
     if v then
       if v._ref then
-        v = v._registry[v._ref]
+        v = v._registry[v._ref]:new(v)
         t[i] = v
       end
       return i, v
@@ -50,7 +50,7 @@ function def:encode(o, ctx, putc)
     putc = function(byte) table.insert(ret, byte) end
   end
   if not self.when or self.when(o) then
-    local this = o[self._name] or o
+    local this = self._name and type(o)=="table" and o[self._name] or o
     for _, s in self:deref_iter() do
       s:encode(this, ctx, putc)
     end
@@ -133,15 +133,30 @@ function t_arr:encode(o, ctx, putc)
     self.counter:put(#v, putc)
   end
   for _, e in ipairs(v) do
-    self.type:put(e, putc)
+    if self.type then
+      self.type:put(e, putc)
+    else
+      def.encode(self, e, ctx, putc)
+    end
   end
 end
 function t_arr:decode(getc, ctx, o)
-  assert(self.counter or self.length)
   local v = {}
   local count = self.counter and self.counter:get(getc) or self.length
-  for c=1,count do
-    local item = self.type:get(getc)
+  while true do
+    if not count and getc(true)==nil then
+      break
+    elseif count then
+      if count==0 then break end
+      count = count - 1
+    end
+    local item
+    if self.type then
+      item = self.type:get(getc)
+    else
+      item = def.decode(self, getc, ctx, item)
+    end
+    if type(item)=="table" and #item==1 then item=item[1] end
     table.insert(v, item)
   end
   if self.reverse then
@@ -153,17 +168,6 @@ function t_arr:decode(getc, ctx, o)
 end
 
 local t_opt = def:new()
-
-local t_rst = def:new()
-function t_rst:decode(getc, ctx, o)
-  local v = {}
-  while true do
-    local input=getc()
-    if not input then return v end
-    table.insert(v, input)
-  end
-  o[self._name] = v
-end
 
 local t_bool = def:new()
 function t_bool:encode(o, ctx, putc)
@@ -200,14 +204,20 @@ end
 
 local t_primitive = def:new()
 function t_primitive:encode(o, ctx, putc)
-  o[self._name]=o[self._name] or self.default or self.const
-  assert(not self.const or o[self._name]==self.const, "value not according to constant define")
-  self:put(assert(o[self._name], "no value for "..self._name), putc)
+  local v = o
+  if self._name and type(v)=="table" then v=v[self._name] end
+  v = v or self.default
+  assert(not self.const or v==self.const, "value not according to constant definition")
+  self:put(v, putc)
 end
 function t_primitive:decode(getc, ctx, o)
   local v = self:get(getc)
   assert(not self.const or v==self.const, "value not according to constant define")
-  o[self._name] = v
+  if self._name then
+    o[self._name] = v
+  else
+    table.insert(o, v)
+  end
 end
 
 local t_genint = t_primitive:new()
@@ -274,7 +284,6 @@ local function parse(deffun)
     msg = create(t_msg_i),
     map = create(t_map_i),
     arr = create(t_arr),
-    rst = create(t_rst),
     opt = create(t_opt),
     bool = create(t_bool),
     bmap = create(t_bmap),
