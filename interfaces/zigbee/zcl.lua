@@ -5,7 +5,7 @@ local function more_data(name)
 end
 local function more_of(name) return opt{nil, when=more_data(name), msg{ref=name}} end
 
-map{"Status", type=t_U8, values={
+map{"Status", type=t_U8, register=true, values={
   {"SUCCESS",                     0x00, 0xFF},
   {"FAILURE",                     0x01, 0xFF},
   {"NOT_AUTHORIZED",              0x7e, 0xFF},
@@ -44,7 +44,7 @@ map{"Status", type=t_U8, values={
 }}
 
 local function clusterlocal(id, name)
-  return opt {nil, when=function(v,_,ctx) return contains(v.FrameControl, {"FrameTypeLocal"}) and ctx.ClusterId==id end, msg{ref=name.."ClusterFrame"}}
+  return opt {nil, when=function(v,_,ctx,r) return contains(v.FrameControl, {"FrameTypeLocal"}) and ctx.ClusterId==id end, msg{ref=name.."ClusterFrame"}}
 end
 msg{"Frame",
   map {"FrameControl", type=t_U8, values={
@@ -91,7 +91,7 @@ msg{"Frame",
   clusterlocal(0x0014, "MultistateValue"),
 }
 
-map {"CommandIdentifier", type=t_U8, values={
+map {"CommandIdentifier", register=true, type=t_U8, values={
   "ReadAttributes",
   "ReadAttributesResponse",
   "WriteAttributes",
@@ -145,7 +145,7 @@ msg{"GeneralCommandFrame",
   cmdref"DiscoverAttributesExtendedResponse",
 }
 
-map {"Type", type=t_U8, values={
+map {"Type", type=t_U8, register=true, values={
   {"nodata",    0x00, 0xFF},
   {"data8",     0x08, 0xFF},
   {"data16",    0x09, 0xFF},
@@ -403,7 +403,8 @@ msg{"ReportAttributes",
 }
 
 msg{"DefaultResponse",
-  map {ref="CommandIdentifier"},
+  --map {ref="CommandIdentifier"},
+  U8  {"CommandIdentifier"},
   map {ref="Status"}
 }
 
@@ -478,14 +479,55 @@ msg{"DiscoverAttributesExtendedResponse",
     U16 {"AttributeIdentifier"},
     map {ref="Type"},
     map {"AttributeAccessControl", type=t_U8, values={
-      {"Readable",   B"001", B"111"},
-      {"Writable",   B"010", B"111"},
-      {"Reportable", B"100", B"111"}}}
+      {"Readable",   B"001"},
+      {"Writable",   B"010"},
+      {"Reportable", B"100"}}}
   }
 }
 
+--------------------------------------------------------------------------
+
+local function commandfromserver(c)
+  return opt {nil, when=function(_,_,ctx,r) return contains(r.FrameControl, {"DirectionFromServer"}) end, c}
+end
+local function commandtoserver(c)
+  return opt {nil, when=function(_,_,ctx,r) return contains(r.FrameControl, {"DirectionToServer"}) end, c}
+end
+
 msg{"BasicClusterFrame",
-  U8  {"CommandIdentifier"}
+  commandtoserver(
+    map {"CommandIdentifier", type=t_U8, values={
+      {"ResetToFactoryDefaults",  0x00, 0xFF}
+    }}
+  )
 }
+
+msg{"IdentifyClusterFrame",
+  commandtoserver(
+    map {"CommandIdentifier", type=t_U8, values={
+      {"Identify",                0x00, 0xFF},
+      {"IdentifyQuery",           0x01, 0xFF},
+      {"TriggerEffect",           0x40, 0xFF}
+    }}
+  ),
+  commandfromserver(
+    map {"CommandIdentifier", type=t_U8, values={
+      {"IdentifyQueryResponse",   0x00, 0xFF}
+    }}
+  ),
+  cmdref"Identify",
+  cmdref"IdentifyQuery",
+  cmdref"TriggerEffect",
+  cmdref"IdentifyQueryResponse"
+}
+
+msg{"Identify",
+  U16 {"IdentifyTime"}
+}
+
+msg{"IdentifyQueryResponse",
+  U16 {"Timeout"}
+}
+
 
 end

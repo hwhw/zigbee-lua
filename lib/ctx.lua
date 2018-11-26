@@ -70,9 +70,13 @@ end
 
 local ev_tfinished = {"task", "finished"}
 function ctx:task_continue(t, ...)
-  local result = coroutine.resume(t, ...)
+  local result, err = coroutine.resume(t, ...)
   if coroutine.status(t) == "dead" then
-    U.DEBUG("ctx/task", "task %s finished", tostring(t))
+    if not result then
+      U.ERR("ctx/task", "task %s aborted with error: %s, %s", tostring(t), tostring(err), debug.traceback(t))
+    else
+      U.DEBUG("ctx/task", "task %s finished", tostring(t))
+    end
     self:fire(ev_tfinished, {task=t, result=result})
   end
 end

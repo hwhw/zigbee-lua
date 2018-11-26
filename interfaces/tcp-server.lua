@@ -32,7 +32,6 @@ function tcp_server:new(ip, port)
             f, err = xpcall(f, debug.traceback, ctx, this.socket)
           end
           if not f then
-            this.socket:write(string.format("ERROR: %s\n", err))
             U.DEBUG(string.format("tcp_server/%d", fd), "ERROR: %s\n", err)
           end
         end
