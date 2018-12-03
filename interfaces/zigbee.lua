@@ -56,7 +56,7 @@ end
 zigbee.devices = devdb:open(ctx.config.device_database)
 
 function zigbee:handle()
-  ctx:task(function()
+  ctx.task(function()
     local provisioning = {}
     while true do
       local ok, data = ctx:wait(self.ev.device_announce)
@@ -66,7 +66,7 @@ function zigbee:handle()
         if not provisioning[data.ieeeaddr] then
           U.INFO(z, "new device %s, starting provisioning", data.ieeeaddr)
           provisioning[data.ieeeaddr] = true
-          ctx:task(function()
+          ctx.task(function()
             local d, err = data.dongle:provision_device(data.nwkaddr)
             if d then
               self.devices:set(data.ieeeaddr, d)
@@ -80,7 +80,7 @@ function zigbee:handle()
       end
     end
   end)
-  ctx:task(function()
+  ctx.task(function()
     while true do
       local ok, msg = ctx:wait(self.ev.af_message)
       if not ok then return U.ERR(z, "error waiting for AF messages") end

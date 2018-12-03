@@ -107,7 +107,7 @@ function dongle:new(port, baud)
   ctx.srv:char_reader(d.port.fd, frame_reader)
 
   -- TODO: no need to have these running in their own tasks?
-  d.on_state_change = ctx:task(function()
+  d.on_state_change = ctx.task(function()
     while true do
       local _, state = d:waitreq("AREQ_ZDO_STATE_CHANGE_IND")
       d.state = tonumber(state.State)
@@ -116,7 +116,7 @@ function dongle:new(port, baud)
     end
   end)
 
-  d.on_end_device_announce = ctx:task(function()
+  d.on_end_device_announce = ctx.task(function()
     while true do
       local _, enddevice = d:waitreq("AREQ_ZDO_END_DEVICE_ANNCE_IND")
       U.INFO(d.subsys, "end device announce received, device is %s (short: 0x%04x)", enddevice.IEEEAddr, enddevice.NwkAddr)
@@ -124,7 +124,7 @@ function dongle:new(port, baud)
     end
   end)
 
-  d.on_leave_network = ctx:task(function()
+  d.on_leave_network = ctx.task(function()
     while true do
       local _, enddevice = d:waitreq("AREQ_ZDO_LEAVE_IND")
       U.INFO(d.subsys, "device %s left the network, will %srejoin the network", enddevice.IEEEAddr, enddevice.Rejoin == 0 and "not " or "")
@@ -132,7 +132,7 @@ function dongle:new(port, baud)
     end
   end)
 
-  d.on_af_incoming_msg = ctx:task(function()
+  d.on_af_incoming_msg = ctx.task(function()
     while true do
       local _, msg = d:waitreq("AREQ_AF_INCOMING_MSG")
       U.INFO(d.subsys.."/af", "incoming message from 0x%04x, clusterid 0x%04x, dst EP %d", msg.SrcAddr, msg.ClusterId, msg.DstEndpoint)

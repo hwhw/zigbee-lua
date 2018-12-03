@@ -125,9 +125,6 @@ function srv:timer(t, callback, ...)
   U.assert(sock:timerfd_settime(nil, type(t)=="number" and {0, t} or t))
   self:add(sock, S.c.EPOLL.IN, {
     on_readable = function(this)
-      --local o=ffi.new("uint64_t[1]")
-      --this.socket:read(o, 8)
-      self:timer_del(this.socket)
       callback(unpack(p))
     end
   })
