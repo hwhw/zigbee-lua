@@ -65,30 +65,45 @@ msg{"Frame",
   clusterlocal(0x0003, "Identify"),
 
   clusterlocal(0x0004, "Groups"),
-  clusterlocal(0x0005, "Scenes"),
+  --clusterlocal(0x0005, "Scenes"),
 
   clusterlocal(0x0006, "OnOff"),
   clusterlocal(0x0007, "OnOffSwitchConfiguration"),
   clusterlocal(0x0008, "LevelControl"),
 
-  clusterlocal(0x0009, "Alarms"),
+  --clusterlocal(0x0009, "Alarms"),
 
   clusterlocal(0x000a, "Time"),
-  clusterlocal(0x000b, "RSSILocation"),
-  clusterlocal(0x0b05, "Diagnostics"),
-  clusterlocal(0x0020, "PollControl"),
-  clusterlocal(0x001a, "PowerProfile"),
-  clusterlocal(0x0b01, "MeterIdentification"),
+  --clusterlocal(0x000b, "RSSILocation"),
+  --clusterlocal(0x0b05, "Diagnostics"),
+  --clusterlocal(0x0020, "PollControl"),
+  --clusterlocal(0x001a, "PowerProfile"),
+  --clusterlocal(0x0b01, "MeterIdentification"),
 
-  clusterlocal(0x000c, "AnalogInput"),
-  clusterlocal(0x000d, "AnalogOutput"),
-  clusterlocal(0x000e, "AnalogValue"),
-  clusterlocal(0x000f, "BinaryInput"),
-  clusterlocal(0x0010, "BinaryOutput"),
-  clusterlocal(0x0011, "BinaryValue"),
-  clusterlocal(0x0012, "MultistateInput"),
-  clusterlocal(0x0013, "MultistateOutput"),
-  clusterlocal(0x0014, "MultistateValue"),
+  --clusterlocal(0x000c, "AnalogInput"),
+  --clusterlocal(0x000d, "AnalogOutput"),
+  --clusterlocal(0x000e, "AnalogValue"),
+  --clusterlocal(0x000f, "BinaryInput"),
+  --clusterlocal(0x0010, "BinaryOutput"),
+  --clusterlocal(0x0011, "BinaryValue"),
+  --clusterlocal(0x0012, "MultistateInput"),
+  --clusterlocal(0x0013, "MultistateOutput"),
+  --clusterlocal(0x0014, "MultistateValue"),
+
+  -- Measurement and sensing
+  clusterlocal(0x0400, "IlluminanceMeasurement"),
+  clusterlocal(0x0401, "IlluminanceLevelSensing"),
+  clusterlocal(0x0402, "TemperatureMeasurement"),
+  clusterlocal(0x0403, "PressureMeasurement"),
+  clusterlocal(0x0404, "FlowMeasurement"),
+  clusterlocal(0x0405, "RelativeHumidityMeasurement"),
+  clusterlocal(0x0406, "OccupancySensing"),
+  --clusterlocal(0x0b04, "ElectricalMeasurement"),
+
+  -- Lighting
+  clusterlocal(0x0300, "ColorControl"),
+  --clusterlocal(0x0301, "BallastConfiguration"),
+
 }
 
 map {"CommandIdentifier", register=true, type=t_U8, values={
@@ -488,35 +503,40 @@ msg{"DiscoverAttributesExtendedResponse",
 --------------------------------------------------------------------------
 
 local function commandfromserver(c)
-  return opt {nil, when=function(_,_,ctx,r) return contains(r.FrameControl, {"DirectionFromServer"}) end, c}
+  return opt {nil, when=function(_,_,ctx,r) return contains(r.FrameControl, {"DirectionFromServer"}) end, map {"CommandIdentifier", type=t_U8, values=c}}
 end
 local function commandtoserver(c)
-  return opt {nil, when=function(_,_,ctx,r) return contains(r.FrameControl, {"DirectionToServer"}) end, c}
+  return opt {nil, when=function(_,_,ctx,r) return contains(r.FrameControl, {"DirectionToServer"}) end, map {"CommandIdentifier", type=t_U8, values=c}}
 end
 
+-- BASIC CLUSTER
+
 msg{"BasicClusterFrame",
-  commandtoserver(
-    map {"CommandIdentifier", type=t_U8, values={
-      {"ResetToFactoryDefaults",  0x00, 0xFF}
-    }}
-  )
+  commandtoserver{
+    {"ResetToFactoryDefaults",  0x00, 0xFF}
+  }
 }
 
+-- POWER CONFIGURATION CLUSTER
+
+msg{"PowerConfigurationClusterFrame"}
+
+-- DEVICE TEMPERATURE CONFIGURATION CLUSTER
+
+msg{"DeviceTemperatureConfigurationClusterFrame"}
+
+-- IDENTIFY CLUSTER
+
 msg{"IdentifyClusterFrame",
-  commandtoserver(
-    map {"CommandIdentifier", type=t_U8, values={
-      {"Identify",                0x00, 0xFF},
-      {"IdentifyQuery",           0x01, 0xFF},
-      {"TriggerEffect",           0x40, 0xFF}
-    }}
-  ),
-  commandfromserver(
-    map {"CommandIdentifier", type=t_U8, values={
-      {"IdentifyQueryResponse",   0x00, 0xFF}
-    }}
-  ),
+  commandtoserver{
+    {"Identify",                0x00, 0xFF},
+    {"IdentifyQuery",           0x01, 0xFF},
+    {"TriggerEffect",           0x40, 0xFF}
+  },
+  commandfromserver{
+    {"IdentifyQueryResponse",   0x00, 0xFF}
+  },
   cmdref"Identify",
-  cmdref"IdentifyQuery",
   cmdref"TriggerEffect",
   cmdref"IdentifyQueryResponse"
 }
@@ -525,9 +545,466 @@ msg{"Identify",
   U16 {"IdentifyTime"}
 }
 
+msg{"TriggerEffect",
+  map {"EffectIdentifier", type=t_U8, values={
+    {"Blink",           0x00, 0xFF},
+    {"Breathe",         0x01, 0xFF},
+    {"Okay",            0x02, 0xFF},
+    {"ChannelChange",   0x0b, 0xFF},
+    {"FinishEffect",    0xfe, 0xFF},
+    {"StopEffect",      0xff, 0xFF}
+  }},
+  map {"EffectVariant", type=t_U8, values={
+    {"Default",         0x00, 0xFF}
+  }}
+}
+
 msg{"IdentifyQueryResponse",
   U16 {"Timeout"}
 }
 
+-- GROUPS CLUSTER
+
+msg{"GroupsClusterFrame",
+  commandtoserver{
+    {"AddGroup",                0x00, 0xFF},
+    {"ViewGroup",               0x01, 0xFF},
+    {"GetGroupMembership",      0x02, 0xFF},
+    {"RemoveGroup",             0x03, 0xFF},
+    {"RemoveAllGroups",         0x04, 0xFF},
+    {"AddGroupIfIdentifying",   0x05, 0xFF}
+  },
+  commandfromserver{
+    {"AddGroupResponse",            0x00, 0xFF},
+    {"ViewGroupResponse",           0x01, 0xFF},
+    {"GetGroupMembershipResponse",  0x02, 0xFF},
+    {"RemoveGroupResponse",         0x03, 0xFF}
+  },
+  cmdref"AddGroup",
+  cmdref"ViewGroup",
+  cmdref"GetGroupMembership",
+  cmdref"RemoveGroup",
+  cmdref"AddGroupIfIdentifying",
+  cmdref"AddGroupResponse",
+  cmdref"ViewGroupResponse",
+  cmdref"GetGroupMembershipResponse",
+  cmdref"RemoveGroupResponse"
+}
+
+msg{"AddGroup",
+  U16 {"GroupId"},
+  arr {"GroupName", asstring=true, type=t_U8, counter=t_U8}
+}
+
+msg{"ViewGroup",
+  U16 {"GroupId"}
+}
+
+msg{"GetGroupMembership",
+  arr {"Groups", type=t_U16, counter=t_U8}
+}
+
+msg{"RemoveGroup",
+  U16 {"GroupId"}
+}
+
+msg{"AddGroupIfIdentifying",
+  U16 {"GroupId"},
+  arr {"GroupName", asstring=true, type=t_U8, counter=t_U8}
+}
+
+msg{"AddGroupResponse",
+  map {ref="Status"},
+  U16 {"GroupId"}
+}
+
+msg{"ViewGroupResponse",
+  map {ref="Status"},
+  U16 {"GroupId"},
+  arr {"GroupName", asstring=true, type=t_U8, counter=t_U8}
+}
+
+msg{"GetGroupMembershipResponse",
+  U8  {"Capacity"},
+  arr {"Groups", type=t_U16, counter=t_U8}
+}
+
+msg{"RemoveGroupResponse",
+  map {ref="Status"},
+  U16 {"GroupId"}
+}
+  
+-- SCENES CLUSTER  
+
+msg{"ScenesClusterFrame",
+  commandtoserver{
+    {"AddScene",            0x00, 0xFF},
+    {"ViewScene",           0x01, 0xFF},
+    {"RemoveScene",         0x02, 0xFF},
+    {"RemoveAllScenes",     0x03, 0xFF},
+    {"StoreScene",          0x04, 0xFF},
+    {"RecallScene",         0x05, 0xFF},
+    {"GetSceneMembership",  0x06, 0xFF},
+    {"EnhancedAddScene",    0x40, 0xFF},
+    {"EnhancedViewScene",   0x41, 0xFF},
+    {"CopyScene",           0x42, 0xFF}
+  },
+  cmdref"AddScene",
+}
+
+msg{"AddScene",
+  U16 {"GroupId"},
+  U8  {"SceneId"},
+  U16 {"TransitionTime"},
+  arr {"SceneName", asstring=true, type=t_U8, counter=t_U8},
+  -- TODO: extension field sets
+}
+-- TODO: rest of Scenes Cluster
+
+-- ON/OFF CLUSTER
+
+msg{"OnOffClusterFrame",
+  commandtoserver{
+    {"On",                      0x00, 0xFF},
+    {"Off",                     0x01, 0xFF},
+    {"Toggle",                  0x02, 0xFF},
+    {"OffWithEffect",           0x40, 0xFF},
+    {"OnWithRecallGlobalScene", 0x41, 0xFF},
+    {"OnWithTimedOff",          0x42, 0xFF}
+  },
+  cmdref"OffWithEffect",
+  cmdref"OnWithTimedOff",
+}
+
+msg{"OffWithEffect",
+  map {"EffectIdentifier", type=t_U8, values={
+    {"DelayedAllOff",           0x00, 0xFF},
+    {"DyingLight",              0x01, 0xFF}
+  }},
+  U8  {"EffectVariant", default=0} -- TODO: map all variants? Identifyer specific...
+}
+
+msg{"OnWithTimedOff",
+  U8  {"OnOffControl", default=0}, -- TODO: map this?
+  U16 {"OnTime"},
+  U16 {"OffWaitTime"}
+}
+
+-- ON/OFF SWITCH CLUSTER
+
+msg{"OnOffSwitchConfigurationClusterFrame"}
+
+-- LEVEL CONTROL CLUSTER
+
+msg{"LevelControlClusterFrame",
+  commandtoserver{
+    {"MoveToLevel",             0x00, 0xFF},
+    {"Move",                    0x01, 0xFF},
+    {"Step",                    0x02, 0xFF},
+    {"Stop",                    0x03, 0xFF},
+    {"MoveToLevelWithOnOff",    0x04, 0xFF},
+    {"MoveWithOnOff",           0x05, 0xFF},
+    {"StepWithOnOff",           0x06, 0xFF},
+    {"Stop",                    0x07, 0xFF}
+  },
+  cmdref"MoveToLevel",
+  cmdref"Move",
+  cmdref"Step",
+  cmdref"MoveToLevelWithOnOff",
+  cmdref"MoveWithOnOff",
+  cmdref"StepWithOnOff"
+}
+
+msg{"MoveToLevel",
+  U8  {"Level"},
+  U16 {"TransitionTime"}
+}
+
+msg{"Move",
+  map {"MoveMode", type=t_U8, values={"Up", "Down"}},
+  U8  {"Rate"}
+}
+
+msg{"Step",
+  map {"StepMode", type=t_U8, values={"Up", "Down"}},
+  U8  {"StepSize"},
+  U16 {"TransitionTime"}
+}
+
+msg{"MoveToLevelWithOnOff",
+  U8  {"Level"},
+  U16 {"TransitionTime"}
+}
+
+msg{"MoveWithOnOff",
+  map {"MoveMode", type=t_U8, values={"Up", "Down"}},
+  U8  {"Rate"}
+}
+
+msg{"StepWithOnOff",
+  map {"StepMode", type=t_U8, values={"Up", "Down"}},
+  U8  {"StepSize"},
+  U16 {"TransitionTime"}
+}
+
+-- ALARMS CLUSTER
+
+msg{"AlarmsClusterFrame"
+  -- TODO
+}
+
+-- TIME CLUSTER
+
+msg{"TimeClusterFrame"}
+
+-- RSSI LOCATION CLUSTER
+
+msg{"RSSILocationClusterFrame"
+  -- TODO
+}
+
+-- DIAGNOSTICS CLUSTER
+
+msg{"DiagnosticsClusterFrame"}
+
+-- POLL CONTROL CLUSTER
+
+msg{"PollControlClusterFrame"}
+
+-- POWER PROFILE CLUSTER
+
+msg{"PowerProfileClusterFrame"}
+
+-- METER IDENTIFICATION CLUSTER
+
+msg{"MeterIdentificationClusterFrame"}
+
+-- ANALOG INPUT CLUSTER
+
+msg{"AnalogInputClusterFrame"}
+
+-- ANALOG OUTPUT CLUSTER
+
+msg{"AnalogOutputClusterFrame"}
+
+-- ANALOG VALUE CLUSTER
+
+msg{"AnalogValueClusterFrame"}
+
+-- BINARY INPUT CLUSTER
+
+msg{"BinaryInputClusterFrame"}
+
+-- BINARY OUTPUT CLUSTER
+
+msg{"BinaryOutputClusterFrame"}
+
+-- BINARY VALUE CLUSTER
+
+msg{"BinaryValueClusterFrame"}
+
+-- MULTISTATE INPUT CLUSTER
+
+msg{"MultistateInputClusterFrame"}
+
+-- MULTISTATE OUTPUT CLUSTER
+
+msg{"MultistateOutputClusterFrame"}
+
+-- MULTISTATE VALUE CLUSTER
+
+msg{"MultistateValueClusterFrame"}
+
+-- ILLUMINANCE MEASUREMENT CLUSTER
+
+msg{"IlluminanceMeasurementClusterFrame"}
+
+-- ILLUMINANCE LEVEL SENSING CLUSTER
+
+msg{"IlluminanceLevelSensingClusterFrame"}
+
+-- TEMPERATURE MEASUREMENT CLUSTER
+
+msg{"TemperatureMeasurementClusterFrame"}
+
+-- PRESSURE MEASUREMENT CLUSTER
+
+msg{"PressureMeasurementClusterFrame"}
+
+-- FLOW MEASUREMENT CLUSTER
+
+msg{"FlowMeasurementClusterFrame"}
+
+-- RELATIVE HUMIDITY MEASUREMENT CLUSTER
+
+msg{"RelativeHumidityMeasurementClusterFrame"}
+
+-- OCCUPANCY SENSING CLUSTER
+
+msg{"OccupancySensingClusterFrame"}
+
+-- ELECTRICAL MEASUREMENT CLUSTER
+
+msg{"ElectricalMeasurementClusterFrame"}
+
+-- COLOR CONTROL CLUSTER
+
+msg{"ColorControlClusterFrame",
+  commandtoserver{
+    {"MoveToHue",                       0x00, 0xFF},
+    {"MoveHue",                         0x01, 0xFF},
+    {"StepHue",                         0x02, 0xFF},
+    {"MoveToSaturation",                0x03, 0xFF},
+    {"MoveSaturation",                  0x04, 0xFF},
+    {"StepSaturation",                  0x05, 0xFF},
+    {"MoveToHueAndSaturation",          0x06, 0xFF},
+    {"MoveToColor",                     0x07, 0xFF},
+    {"MoveColor",                       0x08, 0xFF},
+    {"StepColor",                       0x09, 0xFF},
+    {"MoveToColorTemperature",          0x0a, 0xFF},
+    {"EnhancedMoveToHue",               0x40, 0xFF},
+    {"EnhancedMoveHue",                 0x41, 0xFF},
+    {"EnhancedStepHue",                 0x42, 0xFF},
+    {"EnhancedMoveToHueAndSaturation",  0x43, 0xFF},
+    {"ColorLoopSet",                    0x44, 0xFF},
+    {"StopMoveStep",                    0x47, 0xFF},
+    {"MoveColorTemperature",            0x4b, 0xFF},
+    {"StepColorTemperature",            0x4c, 0xFF}
+  },
+  cmdref"MoveToHue",
+  cmdref"MoveHue",
+  cmdref"StepHue",
+  cmdref"MoveToSaturation",
+  cmdref"MoveSaturation",
+  cmdref"StepSaturation",
+  cmdref"MoveToHueAndSaturation",
+  cmdref"MoveToColor",
+  cmdref"MoveColor",
+  cmdref"StepColor",
+  cmdref"MoveToColorTemperature",
+  cmdref"EnhancedMoveToHue",
+  cmdref"EnhancedMoveHue",
+  cmdref"EnhancedStepHue",
+  cmdref"EnhancedMoveToHueAndSaturation",
+  cmdref"ColorLoopSet",
+  cmdref"MoveColorTemperature",
+  cmdref"StepColorTemperature"
+}
+
+msg{"MoveToHue",
+  U8  {"Hue"},
+  map {"Direction", type=t_U8, values={"ShortestDistance","LongestDistance","Up","Down"}},
+  U16 {"TransitionTime", default=0}
+}
+
+msg{"MoveHue",
+  map {"MoveMode", type=t_U8, values={"Stop","Up","Reserved","Down"}},
+  U8  {"Rate"}
+}
+
+msg{"StepHue",
+  map {"StepMode", type=t_U8, values={"Reserved","Up","Reserved","Down"}},
+  U8  {"StepSize"},
+  U8  {"TransitionTime"}
+}
+
+msg{"MoveToSaturation",
+  U8  {"Saturation"},
+  U16 {"TransitionTime", default=0}
+}
+
+msg{"MoveSaturation",
+  map {"MoveMode", type=t_U8, values={"Stop","Up","Reserved","Down"}},
+  U8  {"Rate"}
+}
+
+msg{"StepSaturation",
+  map {"StepMode", type=t_U8, values={"Reserved","Up","Reserved","Down"}},
+  U8  {"StepSize"},
+  U8  {"TransitionTime"}
+}
+
+msg{"MoveToHueAndSaturation",
+  U8  {"Hue"},
+  U8  {"Saturation"},
+  U16 {"TransitionTime", default=0}
+}
+
+msg{"MoveToColor",
+  U16 {"ColorX"},
+  U16 {"ColorY"},
+  U16 {"TransitionTime"}
+}
+
+msg{"MoveColor",
+  I16 {"RateX"},
+  I16 {"RateY"}
+}
+
+msg{"StepColor",
+  I16 {"StepX"},
+  I16 {"StepY"},
+  U16 {"TransitionTime"}
+}
+
+msg{"MoveToColorTemperature",
+  U16 {"ColorTemperatureMireds"},
+  U16 {"TransitionTime"}
+}
+
+msg{"EnhancedMoveToHue",
+  U16 {"EnhancedHue"},
+  map {"Direction", type=t_U8, values={"ShortestDistance","LongestDistance","Up","Down"}},
+  U16 {"TransitionTime", default=0}
+}
+
+msg{"EnhancedMoveHue",
+  map {"MoveMode", type=t_U8, values={"Stop","Up","Reserved","Down"}},
+  U16 {"Rate"}
+}
+
+msg{"EnhancedStepHue",
+  map {"StepMode", type=t_U8, values={"Reserved","Up","Reserved","Down"}},
+  U16 {"StepSize"},
+  U16 {"TransitionTime"}
+}
+
+msg{"EnhancedMoveToHueAndSaturation",
+  U16 {"EnhancedHue"},
+  U8  {"Saturation"},
+  U16 {"TransitionTime", default=0}
+}
+
+msg{"ColorLoopSet",
+  map {"UpdateFlags", type=t_U8, values={
+    {"UpdateAction",      B"0001"},
+    {"UpdateDirection",   B"0010"},
+    {"UpdateTime",        B"0100"},
+    {"UpdateStartHue",    B"1000"}
+  }},
+  map {"Action", type=t_U8, values={"DeactivateColorLoop","ActivateColorLoopStartHue","ActivateColorLoopCurrentHue"}},
+  map {"Direction", type=t_U8, values={"DecrementHue","IncrementHue"}},
+  U16 {"Time"},
+  U16 {"StartHue"}
+}
+
+msg{"MoveColorTemperature",
+  map {"MoveMode", type=t_U8, values={"Stop","Up","Reserved","Down"}},
+  U16 {"Rate"},
+  U16 {"ColorTemperatureMinimumMireds", default=0},
+  U16 {"ColorTemperatureMaximumMireds", default=0}
+}
+
+msg{"StepColorTemperature",
+  map {"StepMode", type=t_U8, values={"Reserved","Up","Reserved","Down"}},
+  U16 {"StepSize"},
+  U16 {"TransitionTime"},
+  U16 {"ColorTemperatureMinimumMireds", default=0},
+  U16 {"ColorTemperatureMaximumMireds", default=0}
+}
+
+-- BALLAST CONFIGURATION CLUSTER
+
+msg{"BallastConfigurationClusterFrame"}
 
 end
