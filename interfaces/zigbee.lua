@@ -102,14 +102,14 @@ function zigbee:provision_device(dongle, ieeeaddr, nwkaddr)
   if not provisioning[ieeeaddr] then
     U.INFO(z, "new device %s, starting provisioning", ieeeaddr)
     provisioning[ieeeaddr] = true
-    ctx.task(function()
+    ctx.task{name="zigbee_provisioning", function()
       local d, err = dongle:provision_device(nwkaddr)
       if d then
         self.devices:set(ieeeaddr, d)
         self.devices:save()
       end
       provisioning[ieeeaddr] = nil
-    end)
+    end}
   else
     U.INFO(z, "already provisioning device %s", ieeeaddr)
   end
@@ -120,14 +120,14 @@ function zigbee:unknown_dev(dongle, nwkaddr)
   local ieeeaddr = dongle:get_ieeeaddr(nwkaddr)
   if ieeeaddr then
     U.INFO(z, "device has IEEEAddr %s, provisioning device", ieeeaddr)
-    ctx.task(function() self:provision_device(dongle, ieeeaddr, nwkaddr) end)
+    self:provision_device(dongle, ieeeaddr, nwkaddr)
     return ieeeaddr
   end
 end
 
 function zigbee:handle()
   -- provisioning for newly announced devices
-  ctx.task(function()
+  ctx.task{name="zigbee_announce_listener", function()
     while true do
       local ok, data = ctx:wait(self.ev.device_announce)
       if not ok then return U.ERR(z, "error waiting for device announcements") end
@@ -142,9 +142,9 @@ function zigbee:handle()
         end
       end
     end
-  end)
+  end}
   -- handling of incoming data
-  ctx.task(function()
+  ctx.task{name="zigbee_data_handler", function()
     while true do
       local ok, msg = ctx:wait(self.ev.af_message)
       if not ok then
@@ -192,7 +192,7 @@ function zigbee:handle()
         end
       end
     end
-  end)
+  end}
 end
 
 function zigbee:get_dev_ep(id, inclusters, outclusters)
@@ -241,23 +241,23 @@ function zigbee:send_af(id, cluster, data, global)
 end
 
 function zigbee:identify(id, time)
-  ctx.task(function()
+  ctx.task{name="zigbee_idenfity", function()
     self:send_af(id, 0x0003, {
       IdentifyClusterFrame = { CommandIdentifier = "Identify", Identify = { IdentifyTime = time or 4 } }
     })
-  end)
+  end}
 end
 
 function zigbee:switch(id, cmd)
-  ctx.task(function()
+  ctx.task{name="zigbee_switch", function()
     self:send_af(id, 0x0006, {
       OnOffClusterFrame = { CommandIdentifier = cmd }
     })
-  end)
+  end}
 end
 
 function zigbee:hue_sat(id, hue, sat, transition_time)
-  ctx.task(function()
+  ctx.task{name="zigbee_hue_sat", function()
     self:send_af(id, 0x0300, {
       ColorControlClusterFrame = {
         CommandIdentifier = "EnhancedMoveToHueAndSaturation",
@@ -268,11 +268,11 @@ function zigbee:hue_sat(id, hue, sat, transition_time)
         }
       }
     })
-  end)
+  end}
 end
 
 function zigbee:ctemp(id, mireds, transition_time)
-  ctx.task(function()
+  ctx.task{name="zigbee_ctemp", function()
     self:send_af(id, 0x0300, {
       ColorControlClusterFrame = {
         CommandIdentifier = "MoveToColorTemperature",
@@ -282,11 +282,11 @@ function zigbee:ctemp(id, mireds, transition_time)
         }
       }
     })
-  end)
+  end}
 end
 
 function zigbee:level(id, level, transition_time)
-  ctx.task(function()
+  ctx.task{name="zigbee_level", function()
     self:send_af(id, 0x0008, {
       LevelControlClusterFrame = {
         CommandIdentifier = "MoveToLevelWithOnOff",
@@ -296,7 +296,7 @@ function zigbee:level(id, level, transition_time)
         }
       }
     })
-  end)
+  end}
 end
 
 return zigbee

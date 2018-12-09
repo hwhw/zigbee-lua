@@ -126,32 +126,32 @@ function dongle:new(port, baud)
   ctx.srv:char_reader(d.port.fd, frame_reader)
 
   -- TODO: no need to have these running in their own tasks?
-  d.on_state_change = ctx.task(function()
+  d.on_state_change = ctx.task{name="cc253x_state_change", function()
     while true do
       local _, state = d:waitreq("AREQ_ZDO_STATE_CHANGE_IND")
       d.state = tonumber(state.State)
       U.INFO(d.subsys, "device state changed to %d", d.state)
       -- TODO: fire event (at least on relevant states)
     end
-  end)
+  end}
 
-  d.on_end_device_announce = ctx.task(function()
+  d.on_end_device_announce = ctx.task{name="cc253x_end_device_announce", function()
     while true do
       local _, enddevice = d:waitreq("AREQ_ZDO_END_DEVICE_ANNCE_IND")
       U.INFO(d.subsys, "end device announce received, device is %s (short: 0x%04x)", enddevice.IEEEAddr, enddevice.NwkAddr)
       ctx:fire(zigbee.ev.device_announce, {dongle = d, ieeeaddr = enddevice.IEEEAddr, nwkaddr = enddevice.NwkAddr})
     end
-  end)
+  end}
 
-  d.on_leave_network = ctx.task(function()
+  d.on_leave_network = ctx.task{name="cc253x_leave_network", function()
     while true do
       local _, enddevice = d:waitreq("AREQ_ZDO_LEAVE_IND")
       U.INFO(d.subsys, "device %s left the network, will %srejoin the network", enddevice.IEEEAddr, enddevice.Rejoin == 0 and "not " or "")
       ctx:fire(zigbee.ev.device_leave, {dongle = d, ieeeaddr = enddevice.IEEEAddr})
     end
-  end)
+  end}
 
-  d.on_af_incoming_msg = ctx.task(function()
+  d.on_af_incoming_msg = ctx.task{name="cc253x_incoming_message", function()
     while true do
       local _, msg = d:waitreq("AREQ_AF_INCOMING_MSG")
       U.INFO(d.subsys.."/af", "incoming message from 0x%04x, clusterid 0x%04x, dst EP %d", msg.SrcAddr, msg.ClusterId, msg.DstEndpoint)
@@ -172,7 +172,7 @@ function dongle:new(port, baud)
         })
       end
     end
-  end)
+  end}
 
   return d
 end
@@ -180,7 +180,7 @@ end
 -- NOTE: to force joining via a specific router, you need to add the coordinator (0)
 -- to the list of excluded devices, even if it was not among the included devices
 function dongle:allow_join(data)
-  ctx.task(function()
+  ctx.task{name="cc253x_allow_join", function()
     data = data or {}
     data.include = data.include or { 0 }
     data.include = type(data.include) == "table" and data.include or {data.include}
@@ -202,7 +202,7 @@ function dongle:allow_join(data)
         U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
       end
     end
-  end)
+  end}
 end
 
 function dongle:get_ieeeaddr(nwk)
