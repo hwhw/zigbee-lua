@@ -81,6 +81,9 @@ function def:decode(getc, ctx, o, root)
   end
   return this, getc(true) and getc
 end
+function def:safe_decode(getc, ctx, o, root)
+  return pcall(self.decode, self, getc, ctx, o, root)
+end
 
 local t_msg = def:new{__call=def.create,register=true}
 
@@ -186,6 +189,7 @@ end
 
 local t_bmap = def:new()
 function t_bmap:encode(o, ctx, putc, root)
+  assert(o[self.name], "no value for "..self.name)
   -- TODO: implement default
   -- TODO: equality check for const
   for i=0,self.bytes-1 do
@@ -197,10 +201,11 @@ function t_bmap:encode(o, ctx, putc, root)
   end
 end
 function t_bmap:decode(getc, ctx, o, root)
+  o[self.name] = {}
   for i=0,self.bytes-1 do
     local v = getc()
     for b=0,7 do
-      o[self.name][i*8+b+1] = bit.band(v, bit.lshift(1, b)) ~= 0
+      o[self.name][i*8+b] = bit.band(v, bit.lshift(1, b)) ~= 0
     end
   end
 end

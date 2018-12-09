@@ -40,6 +40,25 @@ function dongle:sendpackage(data)
   U.DEBUG(self.subsys.."/znp", "sending request:\n%s", U.hexdump(req))
 end
 
+local function check_ok(ok, ret)
+  return ok and ret.Status==0, ret
+end
+
+function dongle:areq(areqname, data)
+  U.DEBUG(self.subsys.."/areq", "sending AREQ %s, data: %s", areqname, U.dump(data))
+  self:sendpackage(ZNP("AREQ_"..areqname):encode(data))
+end
+
+function dongle:waitreq(reqname, timeout, cond)
+  return ctx:wait({"CC-ZNP-MT", self, reqname}, cond, timeout)
+end
+
+function dongle:sreq(sreqname, data, timeout)
+  U.DEBUG(self.subsys.."/sreq", "sending SREQ %s, data: %s", sreqname, U.dump(data))
+  self:sendpackage(ZNP("SREQ_"..sreqname):encode(data))
+  return self:waitreq("SRSP_"..sreqname, timeout or 5.0)
+end
+
 function dongle:new(port, baud)
   local d = {
     ZNP = ZNP,
@@ -142,7 +161,7 @@ function dongle:new(port, baud)
       end
       if profile then
         ctx:fire(zigbee.ev.af_message, {
-          --dongle = d,
+          dongle = d,
           data = msg.Data,
           src = msg.SrcAddr,
           clusterid = msg.ClusterId,
@@ -154,68 +173,106 @@ function dongle:new(port, baud)
       end
     end
   end)
+
   return d
 end
 
-function dongle:areq(areqname, data)
-  U.DEBUG(self.subsys.."/areq", "sending AREQ %s, data: %s", areqname, U.dump(data))
-  self:sendpackage(ZNP("AREQ_"..areqname):encode(data))
+-- NOTE: to force joining via a specific router, you need to add the coordinator (0)
+-- to the list of excluded devices, even if it was not among the included devices
+function dongle:allow_join(data)
+  ctx.task(function()
+    data = data or {}
+    data.include = data.include or { 0 }
+    data.include = type(data.include) == "table" and data.include or {data.include}
+    data.exclude = data.exclude or {}
+    data.exclude = type(data.exclude) == "table" and data.exclude or {data.exclude}
+    data.duration = data.duration or 0xFE
+
+    for _, devaddr in ipairs(data.include) do
+      local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
+      local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=data.duration,TCSignificance=0}))
+      if not ok then
+        U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
+      end
+    end
+    for _, devaddr in ipairs(data.exclude) do
+      local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
+      local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=0,TCSignificance=0}))
+      if not ok then
+        U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
+      end
+    end
+  end)
 end
 
-function dongle:waitreq(reqname, timeout, cond)
-  return ctx:wait({"CC-ZNP-MT", self, reqname}, cond, timeout)
-end
-
-function dongle:sreq(sreqname, data, timeout)
-  U.DEBUG(self.subsys.."/sreq", "sending SREQ %s, data: %s", sreqname, U.dump(data))
-  self:sendpackage(ZNP("SREQ_"..sreqname):encode(data))
-  return self:waitreq("SRSP_"..sreqname, timeout or 5.0)
-end
-
-local function check_ok(ok, ret)
-  return ok and ret.Status==0, ret
+function dongle:get_ieeeaddr(nwk)
+  U.INFO(self.subsys, "looking up IEEEAddr for NWK addr %04x", nwk)
+  local ok, res = self:sreq("UTIL_ADDRMGR_NWK_ADDR_LOOKUP", {NwkAddr=nwk})
+  if ok then return res.ExtAddr end
 end
 
 function dongle:provision_device(nwk)
-  U.INFO(self.subsys, "querying node descriptor for device 0x%04x", nwk)
+  U.INFO(self.subsys, "querying node descriptor for device %04x", nwk)
 
   local devdata = {nwkaddr=nwk}
+  local ok, res, nodedesc, endpoints, desc
 
-  local ok, res = check_ok(self:sreq("ZDO_NODE_DESC_REQ", {DstAddr=nwk, NWKAddrOfInterest=nwk}))
-  if not ok then
-    return U.ERR(self.subsys, "error issuing node descriptor query, aborting")
-  end
+  for try=5,1,-1 do
+    ok, res = check_ok(self:sreq("ZDO_NODE_DESC_REQ", {DstAddr=nwk, NWKAddrOfInterest=nwk}))
+    if not ok then
+      return U.ERR(self.subsys, "error issuing node descriptor query, aborting")
+    end
 
-  local ok, nodedesc = check_ok(self:waitreq("AREQ_ZDO_NODE_DESC_RSP", 1, U.filter{NwkAddrOfInterest=nwk}))
-  if not ok then
-    return U.ERR(self.subsys, "no or bad node descriptor received for device 0x%04x, aborting", nwk)
+    ok, nodedesc = check_ok(self:waitreq("AREQ_ZDO_NODE_DESC_RSP", 5+math.random(5), U.filter{NwkAddrOfInterest=nwk}))
+    if not ok then
+      U.ERR(self.subsys, "no or bad node descriptor received for device %04x", nwk)
+      if try==1 then
+        return U.ERR(self.subsys, "aborting provisioning of device %04x", nwk)
+      end
+    else
+      break
+    end
   end
 
   devdata.nodedesc = nodedesc
 
   U.INFO(self.subsys, "enumerate endpoints for device 0x%04x", nwk)
-  local ok, res = check_ok(self:sreq("ZDO_ACTIVE_EP_REQ", {DstAddr=nwk, NWKAddrOfInterest=nwk}))
-  if not ok then
-    return U.ERR(self.subsys, "error issuing active endpoint query, aborting")
-  end
+  for try=5,1,-1 do
+    ok, res = check_ok(self:sreq("ZDO_ACTIVE_EP_REQ", {DstAddr=nwk, NWKAddrOfInterest=nwk}))
+    if not ok then
+      return U.ERR(self.subsys, "error issuing active endpoint query, aborting")
+    end
 
-  local ok, endpoints = check_ok(self:waitreq("AREQ_ZDO_ACTIVE_EP_RSP", 1, U.filter{NwkAddr=nwk}))
-  if not ok then
-    return U.ERR(self.subsys, "no or bad active endpoint info received for device 0x%04x, aborting", nwk)
+    ok, endpoints = check_ok(self:waitreq("AREQ_ZDO_ACTIVE_EP_RSP", 5+math.random(5), U.filter{NwkAddr=nwk}))
+    if not ok then
+      U.ERR(self.subsys, "no or bad active endpoint info received for device %04x", nwk)
+      if try==1 then
+        return U.ERR(self.subsys, "aborting provisioning of device %04x", nwk)
+      end
+    else
+      break
+    end
   end
   
   devdata.eps = {}
 
   for _, ep in ipairs(endpoints.ActiveEPList) do
-    U.INFO(self.subsys, "querying simple descriptor for EP %d of device 0x%04x", ep, nwk)
-    local ok, res = check_ok(self:sreq("ZDO_SIMPLE_DESC_REQ", {DstAddr=nwk, NWKAddrOfInterest=nwk, Endpoint=ep}))
-    if not ok then
-      return U.ERR(self.subsys, "error issuing simple descriptor query, aborting")
-    end
+    U.INFO(self.subsys, "querying simple descriptor for EP %d of device %04x", ep, nwk)
+    for try=5,1,-1 do
+      ok, res = check_ok(self:sreq("ZDO_SIMPLE_DESC_REQ", {DstAddr=nwk, NWKAddrOfInterest=nwk, Endpoint=ep}))
+      if not ok then
+        return U.ERR(self.subsys, "error issuing simple descriptor query, aborting")
+      end
 
-    local ok, desc = check_ok(self:waitreq("AREQ_ZDO_SIMPLE_DESC_RSP", 1, U.filter{NwkAddr=nwk, Endpoint=ep}))
-    if not ok then
-      return U.ERR(self.subsys, "no or bad simple descriptor received for EP %d of device 0x%04x, aborting", ep, nwk)
+      ok, desc = check_ok(self:waitreq("AREQ_ZDO_SIMPLE_DESC_RSP", 5+math.random(5), U.filter{NwkAddr=nwk, Endpoint=ep}))
+      if not ok then
+        U.ERR(self.subsys, "no or bad simple descriptor received for EP %d of device %04x", ep, nwk)
+        if try==1 then
+          return U.ERR(self.subsys, "aborting provisioning of device %04x", nwk)
+        end
+      else
+        break
+      end
     end
 
     table.insert(devdata.eps, {

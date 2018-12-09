@@ -33,7 +33,7 @@ end
 function ctx:fire(event, eventparams)
   local handlers = {}
   handlersel(handlers, self.tasks_waiting, event, 1)
-  U.DEBUG("ctx/event", "event fired: %s", U.dump(event))
+  --U.DEBUG("ctx/event", "event fired: %s", U.dump(event))
   for _, handler in ipairs(handlers) do
     if not handler.cond or handler.cond(eventparams) then
       handler.callback(event, eventparams)
@@ -257,10 +257,22 @@ function task:wait(event, cond, timeout)
   return unpack(ret)
 end
 
+-- convenience method that acts on the current task
+function ctx:wait(...)
+  assert(taskregistry[coroutine.running()], "wait() called outside a task context")
+  return taskregistry[coroutine.running()]:wait(...)
+end
+
 -- convenience wrapper to simply sleep for a given number
 -- of seconds (fractionally, if needed)
 function task:sleep(timeout)
   return self:wait(nil, nil, timeout)
+end
+
+-- convenience method that acts on the current task
+function ctx:sleep(...)
+  assert(taskregistry[coroutine.running()], "wait() called outside a task context")
+  return taskregistry[coroutine.running()]:sleep(...)
 end
 
 -- ctx.task is an instance so the __call metamethod works as

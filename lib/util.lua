@@ -71,7 +71,10 @@ function util.tohex(t)
   return table.concat(hex)
 end
 
-util.dump = require"lib.inspect-lua.inspect"
+local inspect=require"lib.inspect-lua.inspect"
+function util.dump(x)
+  return inspect(x, {process=function(item, path) if path[#path]~=inspect.METATABLE then return item end end})
+end
 
 -- helper function to parse binary numbers
 function util.B(bstr, pos, acc)
