@@ -2,12 +2,20 @@ local U = require"lib.util"
 
 local ctx = {
   config = require"config",
-  tasks_waiting = {}
+  tasks_waiting = {},
+  interfaces = {}
 }
 
 ctx.srv = require(ctx.config.srv_implementation)
 
 function ctx:run()
+  for class, instances in pairs(self.config.interfaces) do
+    for n, config in ipairs(instances) do
+      self.interfaces[class] = self.interfaces[class] or {}
+      self.interfaces[class][n] = require("interfaces."..class):new(config):init()
+    end
+  end
+
   return self.srv:loop()
 end
 

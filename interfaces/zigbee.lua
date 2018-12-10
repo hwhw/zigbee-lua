@@ -145,48 +145,21 @@ function zigbee:init()
     end
   end}
   -- handling of incoming data
-  ctx.task{name="zigbee_data_handler", function()
+  ctx.task{name="zigbee_rx_handler", function()
     while true do
       local ok, msg = ctx:wait{"Zigbee", self.dongle, "af_message"}
       if not ok then
-        U.ERR(z, "error waiting for AF messages")
+        U.ERR(z, "error waiting for AF message receive")
         -- TODO: reasoning whether to end task here
       else
         local dev, ieeeaddr = self.devices:nwk(msg.src)
         if not dev then
           self:unknown_dev(msg.src)
         else
-          --U.INFO(z, "got AF message: %s", U.dump(msg))
           local ok, data = ZCL"Frame":safe_decode(msg.data,{ClusterId=msg.clusterid})
           if ok then
             U.DEBUG(z, "parsed: %s", U.dump(data))
-            local clusternames = {
-              [0x0006] = "OnOff",
-              [0x0012] = "MultistateInput",
-              [0x0400] = "IlluminanceMeasurement",
-              [0x0401] = "IlluminanceLevelSensing",
-              [0x0402] = "TemperatureMeasurement",
-              [0x0403] = "PressureMeasurement",
-              [0x0404] = "FlowMeasurement",
-              [0x0405] = "RelativeHumidityMeasurement",
-              [0x0406] = "OccupancySensing",
-              [0x0b04] = "ElectricalMeasurement",
-            }
-            local cluster = clusternames[msg.clusterid]
-            if cluster
-              and data.GeneralCommandFrame
-              and data.GeneralCommandFrame.CommandIdentifier == "ReportAttributes" then
-
-              if data.GeneralCommandFrame.ReportAttributes.AttributeReports then
-                for _, report in ipairs(data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
-                  local id = report.AttributeIdentifier
-                  local value = report.Attribute.Value
-                  ctx:fire(ctx.zoo.ev.value_report, {source={"Zigbee", dev.name or ieeeaddr, msg.srcendpoint}, cluster=cluster, id=id, value=value})
-                end
-              end
-            else
-              U.INFO(z, "got attribute record for unhandled cluster %04x", msg.clusterid)
-            end
+            ctx:fire({"Zigbee", "ZCL", "from", dev.name or ieeeaddr}, {cluster = msg.clusterid, srcep = msg.srcendpoint, data = data})
           else
             U.INFO(z, "error decoding ZCL message: %s", data)
           end
@@ -194,112 +167,44 @@ function zigbee:init()
       end
     end
   end}
-  return self
-end
-
-function zigbee:get_dev_ep(id, inclusters, outclusters)
-  inclusters = inclusters or {}
-  outclusters = outclusters or {}
-  local dev, ieeeaddr = self.devices:find(id)
-  if not dev then
-    U.ERR(z, "unknown device %s", ieeeaddr)
-    return
-  end
-  if not dev.eps then
-    U.ERR(z, "no endpoint information for device %s", ieeeaddr)
-    return
-  end
-  local matching_eps = {}
-  for _, ep in ipairs(dev.eps) do
-    if U.contains(ep.InClusterList, inclusters) or U.contains(ep.OutClusterList, outclusters) then
-      table.insert(matching_eps, ep.Endpoint)
+  -- handling of outgoing data
+  ctx.task{name="zigbee_tx_handler", function()
+    while true do
+      local ok, msg = ctx:wait{"Zigbee", "ZCL", "to"}
+      if not ok then
+        U.ERR(z, "error waiting for AF message transmit")
+      else
+        local dev, ieeeaddr = self.devices:find(msg.dst)
+        if dev then
+          if not dev.eps then
+            U.ERR(z, "no endpoint information for device %s", msg.dst)
+          else
+            local dst_ep
+            for _, ep in ipairs(dev.eps) do
+              if U.contains(ep.InClusterList, {msg.cluster}) then
+                dst_ep = ep.Endpoint
+              end
+            end
+            if not dst_ep then
+              U.ERR(z, "no endpoint on device %s for cluster %04x", msg.dst, msg.cluster)
+            else
+              self.dongle:sreq("AF_DATA_REQUEST", {
+                DstAddr = dev.nwkaddr,
+                DstEndpoint = dst_ep,
+                SrcEndpoint = 1, -- TODO: make this flexible
+                ClusterId = msg.cluster,
+                TransId = 1,
+                Options = {},
+                Radius = dev.defaultradius or 3,
+                Data = ZCL"Frame":encode(msg.data, {ClusterId = msg.cluster})
+              })
+            end
+          end
+        end
+      end
     end
-  end
-  if #matching_eps > 0 then
-    return dev, matching_eps[1], matching_eps
-  end
-  U.ERR(z, "no matching endpoints for device %s (in: %s, out: %s)", ieeeaddr, inclusters, outclusters)
-end
-
-function zigbee:send_af(id, cluster, data, global)
-  local dev, ep = self:get_dev_ep(id, {cluster})
-  if dev and ep then
-    -- TODO: make this device agnostic
-    local seqno = dev.seqno or 1
-    dev.seqno = (seqno + 1) % 0x100
-    data.FrameControl = {global and "FrameTypeGlobal" or "FrameTypeLocal", "DirectionToServer", "DisableDefaultResponse" }
-    data.TransactionSequenceNumber = seqno
-    return self.dongle:sreq("AF_DATA_REQUEST", {
-      DstAddr = dev.nwkaddr,
-      DstEndpoint = ep,
-      SrcEndpoint = 1, -- TODO: make this flexible
-      ClusterId = cluster,
-      TransId = 1,
-      Options = {},
-      Radius = dev.defaultradius or 3,
-      Data = ZCL"Frame":encode(data, {ClusterId = cluster})
-    })
-  end
-  return false, "no device found"
-end
-
-function zigbee:identify(id, time)
-  ctx.task{name="zigbee_idenfity", function()
-    self:send_af(id, 0x0003, {
-      IdentifyClusterFrame = { CommandIdentifier = "Identify", Identify = { IdentifyTime = time or 4 } }
-    })
   end}
-end
-
-function zigbee:switch(id, cmd)
-  ctx.task{name="zigbee_switch", function()
-    self:send_af(id, 0x0006, {
-      OnOffClusterFrame = { CommandIdentifier = cmd }
-    })
-  end}
-end
-
-function zigbee:hue_sat(id, hue, sat, transition_time)
-  ctx.task{name="zigbee_hue_sat", function()
-    self:send_af(id, 0x0300, {
-      ColorControlClusterFrame = {
-        CommandIdentifier = "EnhancedMoveToHueAndSaturation",
-        EnhancedMoveToHueAndSaturation = {
-          EnhancedHue = (hue or 0.0) * 0xFFFE,
-          Saturation = (sat or 1.0) * 0xFE,
-          TransitionTime = (transition_time or 1) * 10
-        }
-      }
-    })
-  end}
-end
-
-function zigbee:ctemp(id, mireds, transition_time)
-  ctx.task{name="zigbee_ctemp", function()
-    self:send_af(id, 0x0300, {
-      ColorControlClusterFrame = {
-        CommandIdentifier = "MoveToColorTemperature",
-        MoveToColorTemperature = {
-          ColorTemperatureMireds = mireds or 3000,
-          TransitionTime = (transition_time or 1) * 10
-        }
-      }
-    })
-  end}
-end
-
-function zigbee:level(id, level, transition_time)
-  ctx.task{name="zigbee_level", function()
-    self:send_af(id, 0x0008, {
-      LevelControlClusterFrame = {
-        CommandIdentifier = "MoveToLevelWithOnOff",
-        MoveToLevelWithOnOff = {
-          Level = (level or 1.0) * 0xFF,
-          TransitionTime = (transition_time or 1) * 10
-        }
-      }
-    })
-  end}
+  return self
 end
 
 return zigbee
