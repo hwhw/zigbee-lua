@@ -4,14 +4,7 @@ local json = require"lib.json-lua.json"
 
 local z = "Zigbee"
 local ZCL=require"interfaces.zigbee.zcl"
-local zigbee = {ev = {}, ZCL=ZCL}
-
--- declare events
-local function ev(eventname) zigbee.ev[eventname] = {z, eventname} end
-ev"coordinator_ready"
-ev"device_announce"
-ev"device_leave"
-ev"af_message"
+local zigbee = U.object:new{ev = {}, ZCL=ZCL, dongle=nil}
 
 local devdb = U.object:new()
 function devdb:open(filename)
@@ -95,15 +88,13 @@ function devdb:dump_list()
   end
 end
 
-zigbee.devices = devdb:open(ctx.config.zigbee_device_database)
-
 local provisioning = {}
-function zigbee:provision_device(dongle, ieeeaddr, nwkaddr)
+function zigbee:provision_device(ieeeaddr, nwkaddr)
   if not provisioning[ieeeaddr] then
     U.INFO(z, "new device %s, starting provisioning", ieeeaddr)
     provisioning[ieeeaddr] = true
     ctx.task{name="zigbee_provisioning", function()
-      local d, err = dongle:provision_device(nwkaddr)
+      local d, err = self.dongle:provision_device(nwkaddr)
       if d then
         self.devices:set(ieeeaddr, d)
         self.devices:save()
@@ -115,25 +106,35 @@ function zigbee:provision_device(dongle, ieeeaddr, nwkaddr)
   end
 end
 
-function zigbee:unknown_dev(dongle, nwkaddr)
+function zigbee:unknown_dev(nwkaddr)
   U.INFO(z, "unknown device with NWK addr: %04x", nwkaddr)
-  local ieeeaddr = dongle:get_ieeeaddr(nwkaddr)
+  local ieeeaddr = self.dongle:get_ieeeaddr(nwkaddr)
   if ieeeaddr then
     U.INFO(z, "device has IEEEAddr %s, provisioning device", ieeeaddr)
-    self:provision_device(dongle, ieeeaddr, nwkaddr)
+    self:provision_device(ieeeaddr, nwkaddr)
     return ieeeaddr
   end
 end
 
-function zigbee:handle()
+function zigbee:init()
+  self.devices = devdb:open(self.device_database)
+  self.dongle = require("interfaces.zigbee.devices."..self.device.class):new(self.device):init()
+
+  ctx.task{name="initialize", function()
+    if not self.dongle:initialize_coordinator(true) then
+      U.ERR("main", "could not start coordinator")
+      -- TODO: exit from another thread, better just send an event
+      os.exit(1)
+    end
+  end}
   -- provisioning for newly announced devices
   ctx.task{name="zigbee_announce_listener", function()
     while true do
-      local ok, data = ctx:wait(self.ev.device_announce)
+      local ok, data = ctx:wait{"Zigbee", self.dongle, "device_announce"}
       if not ok then return U.ERR(z, "error waiting for device announcements") end
       local dev = self.devices:ieee(data.ieeeaddr)
       if not dev then
-        self:provision_device(data.dongle, data.ieeeaddr, data.nwkaddr)
+        self:provision_device(data.ieeeaddr, data.nwkaddr)
       else
         if dev.nwkaddr ~= data.nwkaddr then
           U.INFO(z, "update NWK addr for device %s", data.ieeeaddr)
@@ -146,14 +147,14 @@ function zigbee:handle()
   -- handling of incoming data
   ctx.task{name="zigbee_data_handler", function()
     while true do
-      local ok, msg = ctx:wait(self.ev.af_message)
+      local ok, msg = ctx:wait{"Zigbee", self.dongle, "af_message"}
       if not ok then
         U.ERR(z, "error waiting for AF messages")
         -- TODO: reasoning whether to end task here
       else
         local dev, ieeeaddr = self.devices:nwk(msg.src)
         if not dev then
-          self:unknown_dev(msg.dongle, msg.src)
+          self:unknown_dev(msg.src)
         else
           --U.INFO(z, "got AF message: %s", U.dump(msg))
           local ok, data = ZCL"Frame":safe_decode(msg.data,{ClusterId=msg.clusterid})
@@ -193,6 +194,7 @@ function zigbee:handle()
       end
     end
   end}
+  return self
 end
 
 function zigbee:get_dev_ep(id, inclusters, outclusters)
@@ -227,7 +229,7 @@ function zigbee:send_af(id, cluster, data, global)
     dev.seqno = (seqno + 1) % 0x100
     data.FrameControl = {global and "FrameTypeGlobal" or "FrameTypeLocal", "DirectionToServer", "DisableDefaultResponse" }
     data.TransactionSequenceNumber = seqno
-    local ok, ret = ctx.dongle:sreq("AF_DATA_REQUEST", {
+    return self.dongle:sreq("AF_DATA_REQUEST", {
       DstAddr = dev.nwkaddr,
       DstEndpoint = ep,
       SrcEndpoint = 1, -- TODO: make this flexible
@@ -238,6 +240,7 @@ function zigbee:send_af(id, cluster, data, global)
       Data = ZCL"Frame":encode(data, {ClusterId = cluster})
     })
   end
+  return false, "no device found"
 end
 
 function zigbee:identify(id, time)

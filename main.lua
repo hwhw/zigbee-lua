@@ -1,16 +1,11 @@
 local ctx = require"lib.ctx"
 local U = require"lib.util"
 
-ctx.zoo = require"interfaces.zoo"
-ctx.zoo:handle()
-ctx.tcp_server = require"interfaces.tcp-server":new(ctx.config.tcp_server_host or '127.0.0.1', arg[1] or ctx.config.tcp_server_port)
-ctx.dongle = require"interfaces.zigbee.devices.dongle-cc253x":new(arg[2] or ctx.config.port, ctx.config.baud)
-ctx.zigbee = require"interfaces.zigbee"
-ctx.zigbee:handle()
-ctx.task{name="initialize", function()
-  if not ctx.dongle:initialize_coordinator(true) then
-    U.ERR("main", "could not start coordinator")
-    os.exit(1)
+for class, instances in pairs(ctx.config.interfaces) do
+  for n, config in ipairs(instances) do
+    ctx.interfaces = ctx.interfaces or {}
+    ctx.interfaces[class] = ctx.interfaces[class] or {}
+    ctx.interfaces[class][n] = require("interfaces."..class):new(config):init()
   end
-end}
+end
 ctx:run()

@@ -4,14 +4,14 @@ local U = require"lib.util"
 local ffi = require"ffi"
 local S = require"lib.ljsyscall"
 
-local tcp_server = {}
+local tcp_server = U.object:new()
 
-function tcp_server:new(ip, port)
+function tcp_server:init()
   local bufsize = 1024
   local buf = S.t.buffer(bufsize)
 
   -- TODO: move specifics into srv-epoll.lua
-  return ctx.srv:tcp_server(ip, port, {
+  return ctx.srv:tcp_server(self.host, self.port, {
     on_readable = function(this)
       local fd = this.socket:getfd()
       if fd < 0 then

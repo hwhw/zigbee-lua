@@ -7,7 +7,10 @@ local serial = require"lib.serial"
 local ZNP = require"lib.codec"(require"interfaces.zigbee.cc-znp")
 local zigbee = require"interfaces.zigbee"
 
-local dongle = {}
+local dongle = U.object:new{
+  subsys = "dongle-cc2530",
+  handler = {}
+}
 
 local cmd_types = {
   [0] = "POLL",
@@ -36,7 +39,7 @@ function dongle:sendpackage(data)
   assert(l >= 0)
   local fcs = bit.bxor(l, unpack(data))
   local req = string.char(0xFE, l, unpack(data))..string.char(fcs)
-  self.port.fd:write(req)
+  self.serial.fd:write(req)
   U.DEBUG(self.subsys.."/znp", "sending request:\n%s", U.hexdump(req))
 end
 
@@ -59,17 +62,11 @@ function dongle:sreq(sreqname, data, timeout)
   return self:waitreq("SRSP_"..sreqname, timeout or 5.0)
 end
 
-function dongle:new(port, baud)
-  local d = {
-    ZNP = ZNP,
-    subsys = string.format("dongle-cc2530/%s", port),
-    handler = {},
-  }
+function dongle:init()
+  self.subsys = string.format("dongle-cc2530/%s", self.port)
 
-  d.port = serial.open(port)
-  d.port:set_baud(baud)
-
-  setmetatable(d, {__index = self})
+  self.serial = serial.open(self.port)
+  self.serial:set_baud(self.baud)
 
   local frame_reader = coroutine.wrap(function()
     local readbyte = coroutine.yield
@@ -78,10 +75,10 @@ function dongle:new(port, baud)
       while true do
         local b = readbyte()
         if b == 0xFE then
-          U.DEBUG(d.subsys, "SOF found")
+          U.DEBUG(self.subsys, "SOF found")
           break
         else
-          U.INFO(d.subsys, "skipping non-SOF byte 0x%02X", b)
+          U.INFO(self.subsys, "skipping non-SOF byte 0x%02X", b)
         end
       end
       -- read data len
@@ -97,71 +94,70 @@ function dongle:new(port, baud)
         -- success, we have a valid frame
         local cmd_type = bit.rshift(cmd1, 5)
         local cmd_subsys = bit.band(cmd1, 0x1F)
-        U.DEBUG(d.subsys,
+        U.DEBUG(self.subsys,
           "got MT command: type %s (%d), subsystem %s (0x%02X), command id 0x%02X, data:\n%s",
           cmd_types[cmd_type] or "unknown", cmd_type,
           cmd_subsystems[cmd_subsys] or "unknown", cmd_subsys,
           cmd2, U.hexdump(data))
         local o, name, remainder = ZNP:match(data)
         if not o then
-          U.DEBUG(d.subsys, "no matching parser found.")
+          U.DEBUG(self.subsys, "no matching parser found.")
         else
-          U.DEBUG(d.subsys, "MT command %s, payload:\n%s", name, U.dump(o))
-          ctx:fire({"CC-ZNP-MT", d, name}, o)
+          U.DEBUG(self.subsys, "MT command %s, payload:\n%s", name, U.dump(o))
+          ctx:fire({"CC-ZNP-MT", self, name}, o)
           if remainder then
             local r={}
             while true do local c = remainder(); if not c then break end; table.insert(r, c); end
-            U.DEBUG(d.subsys, "MT command %s, remaining data in package: %s",
+            U.DEBUG(self.subsys, "MT command %s, remaining data in package: %s",
               name, U.hexdump(r))
           end
         end
       else
         -- invalid frame
-        U.ERR(d.subsys, "bad FCS, dismissing packet: cmd=%02X%02X, data:\n%s", cmd1, cmd2, U.hexdump(data))
+        U.ERR(self.subsys, "bad FCS, dismissing packet: cmd=%02X%02X, data:\n%s", cmd1, cmd2, U.hexdump(data))
       end
     end
   end)
   frame_reader() -- init
 
-  ctx.srv:char_reader(d.port.fd, frame_reader)
+  ctx.srv:char_reader(self.serial.fd, frame_reader)
 
   -- TODO: no need to have these running in their own tasks?
-  d.on_state_change = ctx.task{name="cc253x_state_change", function()
+  self.on_state_change = ctx.task{name="cc253x_state_change", function()
     while true do
-      local _, state = d:waitreq("AREQ_ZDO_STATE_CHANGE_IND")
-      d.state = tonumber(state.State)
-      U.INFO(d.subsys, "device state changed to %d", d.state)
+      local _, state = self:waitreq("AREQ_ZDO_STATE_CHANGE_IND")
+      self.state = tonumber(state.State)
+      U.INFO(self.subsys, "device state changed to %d", self.state)
       -- TODO: fire event (at least on relevant states)
     end
   end}
 
-  d.on_end_device_announce = ctx.task{name="cc253x_end_device_announce", function()
+  self.on_end_device_announce = ctx.task{name="cc253x_end_device_announce", function()
     while true do
-      local _, enddevice = d:waitreq("AREQ_ZDO_END_DEVICE_ANNCE_IND")
-      U.INFO(d.subsys, "end device announce received, device is %s (short: 0x%04x)", enddevice.IEEEAddr, enddevice.NwkAddr)
-      ctx:fire(zigbee.ev.device_announce, {dongle = d, ieeeaddr = enddevice.IEEEAddr, nwkaddr = enddevice.NwkAddr})
+      local _, enddevice = self:waitreq("AREQ_ZDO_END_DEVICE_ANNCE_IND")
+      U.INFO(self.subsys, "end device announce received, device is %s (short: 0x%04x)", enddevice.IEEEAddr, enddevice.NwkAddr)
+      ctx:fire({"Zigbee", self, "device_announce"}, {ieeeaddr = enddevice.IEEEAddr, nwkaddr = enddevice.NwkAddr})
     end
   end}
 
-  d.on_leave_network = ctx.task{name="cc253x_leave_network", function()
+  self.on_leave_network = ctx.task{name="cc253x_leave_network", function()
     while true do
-      local _, enddevice = d:waitreq("AREQ_ZDO_LEAVE_IND")
-      U.INFO(d.subsys, "device %s left the network, will %srejoin the network", enddevice.IEEEAddr, enddevice.Rejoin == 0 and "not " or "")
-      ctx:fire(zigbee.ev.device_leave, {dongle = d, ieeeaddr = enddevice.IEEEAddr})
+      local _, enddevice = self:waitreq("AREQ_ZDO_LEAVE_IND")
+      U.INFO(self.subsys, "device %s left the network, will %srejoin the network", enddevice.IEEEAddr, enddevice.Rejoin == 0 and "not " or "")
+      ctx:fire({"Zigbee", self, "device_leave"}, {ieeeaddr = enddevice.IEEEAddr})
     end
   end}
 
-  d.on_af_incoming_msg = ctx.task{name="cc253x_incoming_message", function()
+  self.on_af_incoming_msg = ctx.task{name="cc253x_incoming_message", function()
     while true do
-      local _, msg = d:waitreq("AREQ_AF_INCOMING_MSG")
-      U.INFO(d.subsys.."/af", "incoming message from 0x%04x, clusterid 0x%04x, dst EP %d", msg.SrcAddr, msg.ClusterId, msg.DstEndpoint)
+      local _, msg = self:waitreq("AREQ_AF_INCOMING_MSG")
+      U.INFO(self.subsys.."/af", "incoming message from 0x%04x, clusterid 0x%04x, dst EP %d", msg.SrcAddr, msg.ClusterId, msg.DstEndpoint)
       local profile = false
       if msg.DstEndpoint == 1 then
         profile = 0x104
       end
       if profile then
-        ctx:fire(zigbee.ev.af_message, {
-          dongle = d,
+        ctx:fire({"Zigbee", self, "af_message"}, {
           data = msg.Data,
           src = msg.SrcAddr,
           clusterid = msg.ClusterId,
@@ -174,7 +170,7 @@ function dongle:new(port, baud)
     end
   end}
 
-  return d
+  return self
 end
 
 -- NOTE: to force joining via a specific router, you need to add the coordinator (0)
@@ -337,7 +333,7 @@ end
 function dongle:initialize_coordinator(reset_conf)
   if not self:reset()
     or not self:version_check()
-    or not self:conf_check(0x62, ctx.config.zigbee_network_key, reset_conf) -- network key
+    or not self:conf_check(0x62, self.network_key, reset_conf) -- network key
   then
     return U.ERR(self.subsys, "error initializing")
   end
@@ -350,13 +346,13 @@ function dongle:initialize_coordinator(reset_conf)
 
   -- TODO: handle wrong extaddr
 
-  local channelmask = bit.lshift(1, ctx.config.zigbee_channel)
+  local channelmask = bit.lshift(1, self.channel)
   if not self:conf_check(0x87, {0}, reset_conf) -- logical type: coordinator
     or not self:conf_check(0x83, 
-      {bit.band(ctx.config.zigbee_pan_id, 0xFF), bit.rshift(ctx.config.zigbee_pan_id, 8)}, reset_conf) -- PAN ID
+      {bit.band(self.pan_id, 0xFF), bit.rshift(self.pan_id, 8)}, reset_conf) -- PAN ID
     or not self:conf_check(0x2D, 
-      (ctx.config.zigbee_ext_pan_id=="coordinator") and U.reverse(U.fromhex(extaddr))
-      or U.reverse(U.fromhex(ctx.config.zigbee_ext_pan_id)), reset_conf) -- extended PAN ID
+      (self.ext_pan_id=="coordinator") and U.reverse(U.fromhex(extaddr))
+      or U.reverse(U.fromhex(self.ext_pan_id)), reset_conf) -- extended PAN ID
     or not self:conf_check(0x84, {
       bit.band(channelmask, 0xFF),
       bit.band(bit.rshift(channelmask, 8), 0xFF),
@@ -378,7 +374,7 @@ function dongle:initialize_coordinator(reset_conf)
   then
     return U.ERR(self.subsys, "error initializing")
   end
-  ctx:fire(zigbee.ev.coordinator_ready, {dongle = self, ieeeaddr = extaddr})
+  ctx:fire({"Zigbee", self, "coordinator_ready"}, {ieeeaddr = extaddr})
   return U.INFO(self.subsys, "initialized")
 end
 
