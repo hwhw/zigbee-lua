@@ -95,7 +95,7 @@ function devdb:dump_list()
   end
 end
 
-zigbee.devices = devdb:open(ctx.config.device_database)
+zigbee.devices = devdb:open(ctx.config.zigbee_device_database)
 
 local provisioning = {}
 function zigbee:provision_device(dongle, ieeeaddr, nwkaddr)

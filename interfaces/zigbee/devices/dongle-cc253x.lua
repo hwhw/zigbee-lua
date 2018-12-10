@@ -337,7 +337,7 @@ end
 function dongle:initialize_coordinator(reset_conf)
   if not self:reset()
     or not self:version_check()
-    or not self:conf_check(0x62, {1,3,5,7,9,11,13,15,0,2,4,6,8,10,12,13}, reset_conf) -- network key
+    or not self:conf_check(0x62, ctx.config.zigbee_network_key, reset_conf) -- network key
   then
     return U.ERR(self.subsys, "error initializing")
   end
@@ -350,10 +350,18 @@ function dongle:initialize_coordinator(reset_conf)
 
   -- TODO: handle wrong extaddr
 
+  local channelmask = bit.lshift(1, ctx.config.zigbee_channel)
   if not self:conf_check(0x87, {0}, reset_conf) -- logical type: coordinator
-    or not self:conf_check(0x83, U.reverse(U.fromhex"1a62"), reset_conf) -- PAN ID
-    or not self:conf_check(0x2D, U.reverse(U.fromhex(extaddr)), reset_conf) -- extended PAN ID
-    or not self:conf_check(0x84, U.reverse(U.fromhex"00000800"), reset_conf) -- Channel 0x800 = 1<<11 = channel 11
+    or not self:conf_check(0x83, 
+      {bit.band(ctx.config.zigbee_pan_id, 0xFF), bit.rshift(ctx.config.zigbee_pan_id, 8)}, reset_conf) -- PAN ID
+    or not self:conf_check(0x2D, 
+      (ctx.config.zigbee_ext_pan_id=="coordinator") and U.reverse(U.fromhex(extaddr))
+      or U.reverse(U.fromhex(ctx.config.zigbee_ext_pan_id)), reset_conf) -- extended PAN ID
+    or not self:conf_check(0x84, {
+      bit.band(channelmask, 0xFF),
+      bit.band(bit.rshift(channelmask, 8), 0xFF),
+      bit.band(bit.rshift(channelmask, 16), 0xFF),
+      bit.band(bit.rshift(channelmask, 24), 0xFF)}, reset_conf)
     or not self:conf_check(0x8F, {1}, reset_conf) -- ZDO direct cb
     or not self:conf_check(0x64, {1}, reset_conf) -- enable security
     or not self:reset()
