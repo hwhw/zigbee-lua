@@ -70,4 +70,53 @@ function any:level(level, transition_time)
   })
 end
 
+function any:on_button_press(cb)
+  ctx.task{name=string.format("%s/on_button_press", self.id),function()
+    while true do
+      local ok, msg = ctx:wait{"Zigbee", "ZCL", "from", self.id}
+      if not ok then
+        U.ERR("Zigbee_any/on_button_press", "error while waiting for event")
+      else
+        U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
+        if msg.cluster == 6 and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes then
+          local btn = msg.ep
+          for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
+            if r.AttributeIdentifier == 0x8000 then
+              --TODO: add more checks for device?
+              -- assuming Aqara touch button
+              cb(btn, r.Attribute.Value)
+              break
+            elseif r.AttributeIdentifier == 0 and r.Attribute.Value then
+              cb(btn, 1)
+              break
+            end
+          end
+        end
+      end
+    end
+  end}
+end
+
+function any:on_occupancy(cb)
+  ctx.task{name=string.format("%s/on_occupancy", self.id),function()
+    while true do
+      local ok, msg = ctx:wait{"Zigbee", "ZCL", "from", self.id}
+      if not ok then
+        U.ERR("Zigbee_any/on_occupancy", "error while waiting for event")
+      else
+        U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
+        if msg.cluster == 0x406 and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes then
+          local btn = msg.ep
+          for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
+            if r.AttributeIdentifier == 0 and r.Attribute.Value[0] then
+              cb()
+              break
+            end
+          end
+        end
+      end
+    end
+  end}
+end
+
 return any
