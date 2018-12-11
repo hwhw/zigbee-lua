@@ -29,9 +29,10 @@ return {
 
   log = {
     DBG = {
-      false,
-      ctx = true,
-      srv = true
+      true,
+      ctx = {
+        event=false
+      }
     }
   }
 }
