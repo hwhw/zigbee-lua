@@ -11,8 +11,9 @@ function serial.open(dev)
 end
 
 function serial:set_baud(baud)
-  local t = S.t.termios({speed=baud})
-  --t.speed = baud
+  local t = assert(self.fd:tcgetattr())
+  t.speed = baud
+  t:makeraw()
   self.fd:tcsetattr("now", t)
 end
 
