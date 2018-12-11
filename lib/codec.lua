@@ -1,3 +1,10 @@
+--[[
+A binary codec builder library
+
+This kind of creates a DSL for building binary codecs.
+Have a look at the example codecs to get an idea on how to use this.
+]]
+
 local ffi = require"ffi"
 local bit = require"bit"
 local U = require"lib.util"
@@ -22,13 +29,8 @@ function def:create(childs)
     return self._registry[childs]
   end
 end
-function def:match(data, ctx)
-  for n, d in pairs(self._registry) do
-    local ok, ret, remain = pcall(d.decode, d, data, ctx)
-    if ok then return ret, n, remain end
-  end
-  return false
-end
+
+-- iterator that will dereference and return the referenced object instead
 function def:deref_iter()
   return function(t, i)
     i = i + 1
@@ -43,6 +45,13 @@ function def:deref_iter()
     end
   end, self, 0
 end
+
+-- the main API for encoding data
+--
+-- data is given as a table in the first argument
+-- context information can be given as second argument
+-- for now, do not use third/fourth argument, these are
+-- used internally by recursive calls
 function def:encode(o, ctx, putc, root)
   o = o or {}
   root = root or o
@@ -59,6 +68,13 @@ function def:encode(o, ctx, putc, root)
   end
   return ret
 end
+
+-- the main API for decoding data
+--
+-- the first argument is either a function getc(peek) that returns a byte from the
+-- input data buffer (and moves on if peek is not trueish), or a table of byte values
+-- the second argument is optional context information.
+-- the third and fourth arguments are for internal use only.
 function def:decode(getc, ctx, o, root)
   if type(getc)~="function" then
     local data=getc
@@ -81,12 +97,16 @@ function def:decode(getc, ctx, o, root)
   end
   return this, getc(true) and getc
 end
+
+-- convenience wrapper that will catch errors
 function def:safe_decode(getc, ctx, o, root)
   return pcall(self.decode, self, getc, ctx, o, root)
 end
 
+-- msg is kind of a struct and is registered by its name by default
 local t_msg = def:new{__call=def.create,register=true}
 
+-- a map maps numeric values to lists (or single values)
 local t_map = def:new()
 function t_map:iter()
   local i=0
@@ -123,6 +143,14 @@ function t_map:decode(getc, ctx, o, root)
   o[self.name] = (#ret == 1) and ret[1] or ret
 end
 
+-- an array is a repetition of a certain type
+-- the number of repetitions can be constant (length attribute),
+-- a counter value that is read before reading the array values (counter attribute),
+-- or unbounded, in which case it will continue until no more data is available
+-- optional features are:
+--   conversion to/from a string
+--   conversion to/from a hex-value-string
+--   reversing of the values
 local t_arr = def:new()
 function t_arr:encode(o, ctx, putc, root)
   local v=assert(o[self.name], "no value for "..self.name)
@@ -173,8 +201,10 @@ function t_arr:decode(getc, ctx, o, root)
     or v
 end
 
+-- wrapper, kind of an anonymous msg object
 local t_opt = def:new()
 
+-- boolean value
 local t_bool = def:new()
 function t_bool:encode(o, ctx, putc, root)
   o[self.name]=o[self.name] or self.default or self.const
@@ -187,6 +217,8 @@ function t_bool:decode(getc, ctx, o, root)
   o[self.name] = v
 end
 
+-- bitmap: a table of boolean values for each bit
+-- length is given in bytes in the "bytes" attribute
 local t_bmap = def:new()
 function t_bmap:encode(o, ctx, putc, root)
   assert(o[self.name], "no value for "..self.name)
@@ -210,6 +242,7 @@ function t_bmap:decode(getc, ctx, o, root)
   end
 end
 
+-- abstract for a primitive numeric value
 local t_primitive = def:new()
 function t_primitive:encode(o, ctx, putc, root)
   local v = o
@@ -227,6 +260,8 @@ function t_primitive:decode(getc, ctx, o, root)
   end
 end
 
+-- abstract for integers
+-- signedness is specified by the signed attribute
 local t_genint = t_primitive:new()
 function t_genint:put(v, putc)
   local p = ffi.cast("uint8_t*", ffi.new(self.signed and "int64_t[1]" or "uint64_t[1]", v))
@@ -240,9 +275,23 @@ function t_genint:get(getc)
   if self.signed and v>0x7F then for i=self.bytes,7 do p[i]=0xFF end end
   return tonumber(ret[0])
 end
+local t_genint_r = t_primitive:new()
+function t_genint_r:put(v, putc)
+  local p = ffi.cast("uint8_t*", ffi.new(self.signed and "int64_t[1]" or "uint64_t[1]", v))
+  for i=self.bytes-1,0,-1 do putc(p[i]) end
+end
+function t_genint_r:get(getc)
+  local ret = ffi.new(self.signed and "int64_t[1]" or "uint64_t[1]", 0)
+  local p = ffi.cast("uint8_t*", ret)
+  local v
+  for i=self.bytes-1,0,-1 do local l=getc(); v=v or l; p[i]=l end
+  if self.signed and v>0x7F then for i=self.bytes,7 do p[i]=0xFF end end
+  return tonumber(ret[0])
+end
 
 local t_int = t_genint:new{signed=true}
 local t_uint = t_genint:new{signed=false}
+local t_uint_r = t_genint_r:new{signed=false}
 
 local t_I8 = t_int:new{bytes=1}
 local t_I16 = t_int:new{bytes=2}
@@ -254,6 +303,7 @@ local t_I56 = t_int:new{bytes=7}
 local t_I64 = t_int:new{bytes=8}
 local t_U8 = t_uint:new{bytes=1}
 local t_U16 = t_uint:new{bytes=2}
+local t_U16r = t_uint_r:new{bytes=2}
 local t_U24 = t_uint:new{bytes=3}
 local t_U32 = t_uint:new{bytes=4}
 local t_U40 = t_uint:new{bytes=5}
@@ -261,6 +311,7 @@ local t_U48 = t_uint:new{bytes=6}
 local t_U56 = t_uint:new{bytes=7}
 local t_U64 = t_uint:new{bytes=8}
 
+-- abstract for floats/doubles
 local t_float = t_primitive:new{size=4,type="float"}
 function t_float:put(v, putc)
   local p = ffi.cast("uint8_t*", ffi.new(self.type.."[1]", v))
@@ -284,9 +335,10 @@ local function parse(deffun)
     -- typerefs
     t_U8 = t_U8, t_U16 = t_U16, t_U32 = t_U32, t_U40 = t_U40, t_U48 = t_U48, t_U56 = t_U56, t_U64 = t_U64,
     t_I8 = t_I8, t_I16 = t_I16, t_I32 = t_I32, t_I40 = t_I40, t_I48 = t_I48, t_I56 = t_I56, t_I64 = t_I64,
+    t_U16r = t_U16r,
     -- utility functions
     B = U.B, contains = U.contains, contains_all = U.contains_all,
-    U = U, print=print,
+    U = U, print=print, ipairs=ipairs, unpack=unpack,
     -- definition directives
     msg = create(t_msg_i),
     map = create(t_map_i),
@@ -300,6 +352,7 @@ local function parse(deffun)
     U40 = create(t_U40), U48 = create(t_U48), U56 = create(t_U56), U64 = create(t_U64),
     I8 = create(t_I8), I16 = create(t_I16), I24 = create(t_I24), I32 = create(t_I32),
     I40 = create(t_I40), I48 = create(t_I48), I56 = create(t_I56), I64 = create(t_I64),
+    U16r = create(t_U16r),
   }
 
   setfenv(deffun, ctx)()

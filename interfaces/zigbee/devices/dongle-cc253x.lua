@@ -4,7 +4,7 @@ local ffi = require"ffi"
 local bit = require"bit"
 local S = require"lib.ljsyscall"
 local serial = require"lib.serial"
-local ZNP = require"lib.codec"(require"interfaces.zigbee.cc-znp")
+local ccznp = require"interfaces.zigbee.cc-znp""ZNP"
 local zigbee = require"interfaces.zigbee"
 
 local dongle = U.object:new{
@@ -40,7 +40,7 @@ function dongle:sendpackage(data)
   local fcs = bit.bxor(l, unpack(data))
   local req = string.char(0xFE, l, unpack(data))..string.char(fcs)
   self.serial.fd:write(req)
-  U.DEBUG(self.subsys.."/znp", "sending request:\n%s", U.hexdump(req))
+  U.DEBUG({self.subsys,"znp"}, "sending request:\n%s", U.hexdump(req))
 end
 
 local function check_ok(ok, ret)
@@ -48,8 +48,10 @@ local function check_ok(ok, ret)
 end
 
 function dongle:areq(areqname, data)
-  U.DEBUG(self.subsys.."/areq", "sending AREQ %s, data: %s", areqname, U.dump(data))
-  self:sendpackage(ZNP("AREQ_"..areqname):encode(data))
+  U.DEBUG({self.subsys,"areq"}, "sending AREQ %s, data: %s", areqname, U.dump(data))
+  local req="AREQ_"..areqname
+  print(U.dump{Cmd=req,[req]=(data or {})})
+  self:sendpackage(ccznp:encode{Cmd=req,[req]=(data or {})})
 end
 
 function dongle:waitreq(reqname, timeout, cond)
@@ -57,8 +59,9 @@ function dongle:waitreq(reqname, timeout, cond)
 end
 
 function dongle:sreq(sreqname, data, timeout)
-  U.DEBUG(self.subsys.."/sreq", "sending SREQ %s, data: %s", sreqname, U.dump(data))
-  self:sendpackage(ZNP("SREQ_"..sreqname):encode(data))
+  U.DEBUG({self.subsys,"sreq"}, "sending SREQ %s, data: %s", sreqname, U.dump(data))
+  local sreq, srsp = "SREQ_"..sreqname, "SRSP_"..sreqname
+  self:sendpackage(ccznp:encode{Cmd=sreq,[sreq]=(data or {})})
   return self:waitreq("SRSP_"..sreqname, timeout or 5.0)
 end
 
@@ -94,27 +97,29 @@ function dongle:init()
         -- success, we have a valid frame
         local cmd_type = bit.rshift(cmd1, 5)
         local cmd_subsys = bit.band(cmd1, 0x1F)
-        U.DEBUG(self.subsys,
+        U.DEBUG({self.subsys, "mt"},
           "got MT command: type %s (%d), subsystem %s (0x%02X), command id 0x%02X, data:\n%s",
           cmd_types[cmd_type] or "unknown", cmd_type,
           cmd_subsystems[cmd_subsys] or "unknown", cmd_subsys,
           cmd2, U.hexdump(data))
-        local o, name, remainder = ZNP:match(data)
-        if not o then
-          U.DEBUG(self.subsys, "no matching parser found.")
+        local ok, o, remainder = ccznp:safe_decode(data)
+        if not ok then
+          U.ERR({self.subsys, "mt"}, "error parsing MT command. skipping.")
+        elseif not o then
+          U.DEBUG({self.subsys, "mt"}, "no matching parser found.")
         else
-          U.DEBUG(self.subsys, "MT command %s, payload:\n%s", name, U.dump(o))
-          ctx:fire({"CC-ZNP-MT", self, name}, o)
+          U.DEBUG({self.subsys, "mt"}, "MT command %s, payload:\n%s", o.Cmd, U.dump(o[o.Cmd]))
+          ctx:fire({"CC-ZNP-MT", self, o.Cmd}, o[o.Cmd])
           if remainder then
             local r={}
             while true do local c = remainder(); if not c then break end; table.insert(r, c); end
-            U.DEBUG(self.subsys, "MT command %s, remaining data in package: %s",
+            U.DEBUG({self.subsys, "mt"}, "MT command %s, remaining data in package: %s",
               name, U.hexdump(r))
           end
         end
       else
         -- invalid frame
-        U.ERR(self.subsys, "bad FCS, dismissing packet: cmd=%02X%02X, data:\n%s", cmd1, cmd2, U.hexdump(data))
+        U.ERR({self.subsys, "mt"}, "bad FCS, dismissing packet: cmd=%02X%02X, data:\n%s", cmd1, cmd2, U.hexdump(data))
       end
     end
   end)
