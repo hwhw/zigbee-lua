@@ -71,13 +71,16 @@ function devdb:set(ieeeaddr, data)
   self.devs[ieeeaddr] = data
 end
 function devdb:dump_list(writer)
-  writer(string.format("%16s | %04s | %04s | %16s | %s", "IEEE Addr", "NWK", "Manu", "Name", "EPs"))
+  writer(string.format("%16s | %04s | %04s | %16s | %s\n", "IEEE Addr", "NWK", "Manu", "Name", "EPs"))
   for ieeeaddr, v in pairs(self.devs) do
     local eps = {}
     for _, ep in ipairs(v.eps) do
-      table.insert(eps, string.format("%d (in: %s, out: %s)", ep.Endpoint, table.concat(ep.InClusterList, ","), table.concat(ep.OutClusterList, ",")))
+      local in_clusters, out_clusters = {}, {}
+      for _, c in ipairs(ep.InClusterList) do table.insert(in_clusters, string.format("%04x", c)) end
+      for _, c in ipairs(ep.OutClusterList) do table.insert(out_clusters, string.format("%04x", c)) end
+      table.insert(eps, string.format("%d (in: %s, out: %s)", ep.Endpoint, table.concat(in_clusters, ","), table.concat(out_clusters, ",")))
     end
-    writer(string.format("%10s | %04x | %04x | %16s | %s", ieeeaddr, v.nwkaddr, v.nodedesc.ManufacturerCode, v.name or "-", table.concat(eps, "; ")))
+    writer(string.format("%10s | %04x | %04x | %16s | %s\n", ieeeaddr, v.nwkaddr, v.nodedesc.ManufacturerCode, v.name or "-", table.concat(eps, "; ")))
   end
 end
 
