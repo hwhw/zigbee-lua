@@ -70,21 +70,14 @@ function devdb:set(ieeeaddr, data)
   end
   self.devs[ieeeaddr] = data
 end
-function devdb:setname(id, name)
-  local dev = self:find(id)
-  if dev then
-    dev.name = name
-    self:save()
-  end
-end
-function devdb:dump_list()
-  U.INFO(z, "%16s | %04s | %04s | %16s | %s", "IEEE Addr", "NWK", "Manu", "Name", "EPs")
+function devdb:dump_list(writer)
+  writer(string.format("%16s | %04s | %04s | %16s | %s", "IEEE Addr", "NWK", "Manu", "Name", "EPs"))
   for ieeeaddr, v in pairs(self.devs) do
     local eps = {}
     for _, ep in ipairs(v.eps) do
       table.insert(eps, string.format("%d (in: %s, out: %s)", ep.Endpoint, table.concat(ep.InClusterList, ","), table.concat(ep.OutClusterList, ",")))
     end
-    U.INFO(z, "%10s | %04x | %04x | %16s | %s", ieeeaddr, v.nwkaddr, v.nodedesc.ManufacturerCode, v.name or "-", table.concat(eps, "; "))
+    writer(string.format("%10s | %04x | %04x | %16s | %s", ieeeaddr, v.nwkaddr, v.nodedesc.ManufacturerCode, v.name or "-", table.concat(eps, "; ")))
   end
 end
 
@@ -200,6 +193,23 @@ function zigbee:init()
               })
             end
           end
+        end
+      end
+    end
+  end}
+  -- handling of device naming and suchlike
+  ctx.task{name="zigbee_device_attribute", function()
+    while true do
+      local ok, msg = ctx:wait{"Zigbee", "device_attibute"}
+      if not ok then
+        U.ERR(z, "error waiting for device_attribute message")
+      else
+        local dev = self.devices:find(msg.id)
+        if dev then
+          if msg.key then
+            dev[msg.key] = dev[msg.value]
+          end
+          self.devices:save()
         end
       end
     end
