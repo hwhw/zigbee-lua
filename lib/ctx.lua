@@ -107,14 +107,14 @@ function task:next(taskfn, ...)
   if type(taskfn) == "table" then
     next_task = task:new{cr=coroutine.create(taskfn[1]),
       ignore_errors=taskfn.ignore_errors,name=taskfn.name,
-      next_task=false, root=false}
+      next_task=false, root=false, parent=coroutine.running()}
   else
-    next_task = task:new{cr=coroutine.create(taskfn), next_task=false, root=false}
+    next_task = task:new{cr=coroutine.create(taskfn), next_task=false, root=false, parent=coroutine.running()}
   end
   next_task.name = next_task.name or tostring(next_task)
   U.DEBUG("ctx/task", "registering follow up task: %s -> %s", self.name, next_task.name)
   taskregistry[next_task.cr] = next_task
-  if self.root or not taskregistry[coroutine.running()] then
+  if self.root or not taskregistry[self.cr] then
     U.DEBUG("ctx/task", "starting next task %s immediately", next_task.name)
     if self.result then
       return next_task:continue(unpack(self.result))

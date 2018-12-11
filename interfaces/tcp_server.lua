@@ -22,21 +22,24 @@ function tcp_server:init()
       if n == 0 then
         ctx.srv:del(this.socket)
         this.socket:shutdown("rd")
-        if this.data then
-          local n, v
-          local f, err = load(function()
-            n, v = next(this.data, n)
-            return v
-          end, "remote Lua code")
-          if f then
-            f, err = xpcall(f, debug.traceback, ctx, this.socket)
+        ctx.task{name="tcp_client", function()
+          if this.data then
+            local n, v
+            local f, err = load(function()
+              n, v = next(this.data, n)
+              return v
+            end, "remote Lua code")
+            if f then
+              f, err = xpcall(f, debug.traceback, ctx, this.socket)
+            end
+            if not f then
+              U.DEBUG(string.format("tcp_server/%d", fd), "ERROR: %s\n", err)
+            end
           end
-          if not f then
-            U.DEBUG(string.format("tcp_server/%d", fd), "ERROR: %s\n", err)
-          end
-        end
-        this.socket:shutdown("rdwr")
-        this.socket:close()
+        end}:next(function()
+          this.socket:shutdown("rdwr")
+          this.socket:close()
+        end)
       elseif n then
         if not this.data then this.data = {} end
         local data = ffi.string(buf, n)
