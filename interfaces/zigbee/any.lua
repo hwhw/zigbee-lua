@@ -79,7 +79,7 @@ function any:on_button_press(cb)
       else
         U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
         if msg.cluster == 6 and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes then
-          local btn = msg.ep
+          local btn = msg.srcep
           for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
             if r.AttributeIdentifier == 0x8000 then
               --TODO: add more checks for device?
