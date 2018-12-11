@@ -27,6 +27,11 @@ return {
     }
   },
 
-  debug = true,
-  debugsel = ".*"
+  log = {
+    DBG = {
+      false,
+      ctx = true,
+      srv = true
+    }
+  }
 }

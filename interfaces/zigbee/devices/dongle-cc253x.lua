@@ -170,35 +170,39 @@ function dongle:init()
     end
   end}
 
-  return self
-end
-
--- NOTE: to force joining via a specific router, you need to add the coordinator (0)
--- to the list of excluded devices, even if it was not among the included devices
-function dongle:allow_join(data)
-  ctx.task{name="cc253x_allow_join", function()
-    data = data or {}
-    data.include = data.include or { 0 }
-    data.include = type(data.include) == "table" and data.include or {data.include}
-    data.exclude = data.exclude or {}
-    data.exclude = type(data.exclude) == "table" and data.exclude or {data.exclude}
-    data.duration = data.duration or 0xFE
-
-    for _, devaddr in ipairs(data.include) do
-      local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
-      local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=data.duration,TCSignificance=0}))
+  self.on_permit_join = ctx.task{name="cc253x_permit_join", function()
+    while true do
+      local ok, data = ctx:wait{"Zigbee", "permit_join"}
       if not ok then
-        U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
-      end
-    end
-    for _, devaddr in ipairs(data.exclude) do
-      local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
-      local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=0,TCSignificance=0}))
-      if not ok then
-        U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
+        U.ERR(self.subsys, "error waiting for permit_join event")
+      elseif not data.pan_id or data.pan_id == self.pan_id then
+        -- NOTE: to force joining via a specific router, you need to add the coordinator (0)
+        -- to the list of excluded devices, even if it was not among the included devices
+        data.include = data.include or { 0 }
+        data.include = type(data.include) == "table" and data.include or {data.include}
+        data.exclude = data.exclude or {}
+        data.exclude = type(data.exclude) == "table" and data.exclude or {data.exclude}
+        data.duration = data.duration or 0xFE
+
+        for _, devaddr in ipairs(data.include) do
+          local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
+          local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=data.duration,TCSignificance=0}))
+          if not ok then
+            U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
+          end
+        end
+        for _, devaddr in ipairs(data.exclude) do
+          local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
+          local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=0,TCSignificance=0}))
+          if not ok then
+            U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
+          end
+        end
       end
     end
   end}
+
+  return self
 end
 
 function dongle:get_ieeeaddr(nwk)

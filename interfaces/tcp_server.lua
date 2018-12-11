@@ -33,7 +33,7 @@ function tcp_server:init()
               f, err = xpcall(f, debug.traceback, ctx, this.socket)
             end
             if not f then
-              U.DEBUG(string.format("tcp_server/%d", fd), "ERROR: %s\n", err)
+              U.DEBUG({"tcp_server",fd}, "ERROR: %s\n", err)
             end
           end
         end}:next(function()
@@ -44,11 +44,11 @@ function tcp_server:init()
         if not this.data then this.data = {} end
         local data = ffi.string(buf, n)
         table.insert(this.data, data)
-        U.DEBUG(string.format("tcp_server/%d", fd), "data on socket, got %d bytes:\n%s", n, data)
+        U.DEBUG({"tcp_server",fd}, "data on socket, got %d bytes:\n%s", n, data)
       end
     end,
     on_error = function(this)
-      U.INFO(string.format("tcp_server/%d", fd), "error or EOF for connection")
+      U.ERR({"tcp_server",fd}, "error or EOF for connection")
       ctx.srv:del(this.socket)
       this.socket:close()
     end

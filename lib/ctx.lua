@@ -41,7 +41,7 @@ end
 function ctx:fire(event, eventparams)
   local handlers = {}
   handlersel(handlers, self.tasks_waiting, event, 1)
-  --U.DEBUG("ctx/event", "event fired: %s", U.dump(event))
+  U.DEBUG({"ctx","event"}, "event fired: %s", U.dump(event))
   for _, handler in ipairs(handlers) do
     if not handler.cond or handler.cond(eventparams) then
       handler.callback(event, eventparams)
@@ -112,10 +112,10 @@ function task:next(taskfn, ...)
     next_task = task:new{cr=coroutine.create(taskfn), next_task=false, root=false, parent=coroutine.running()}
   end
   next_task.name = next_task.name or tostring(next_task)
-  U.DEBUG("ctx/task", "registering follow up task: %s -> %s", self.name, next_task.name)
+  U.DEBUG({"ctx","task"}, "registering follow up task: %s -> %s", self.name, next_task.name)
   taskregistry[next_task.cr] = next_task
   if self.root or not taskregistry[self.cr] then
-    U.DEBUG("ctx/task", "starting next task %s immediately", next_task.name)
+    U.DEBUG({"ctx","task"}, "starting next task %s immediately", next_task.name)
     if self.result then
       return next_task:continue(unpack(self.result))
     else
@@ -131,7 +131,7 @@ task.__call = task.next
 
 function task:finish()
   if taskregistry[self.cr] then
-    U.DEBUG("ctx/task", "waiting for finish of task %s", self.name)
+    U.DEBUG({"ctx","task"}, "waiting for finish of task %s", self.name)
     local ev = {"task", "finish", self}
     local task = self:next(function(t, ...)
       ctx:fire(ev)
@@ -201,10 +201,10 @@ end
 function task:continue(...)
   self.result = {coroutine.resume(self.cr, self, ...)}
   if coroutine.status(self.cr) == "dead" then
-    U.DEBUG("ctx/task", "task %s finished", self.name)
+    U.DEBUG({"ctx","task"}, "task %s finished", self.name)
     taskregistry[self.cr] = nil
     if not self.result[1] then
-      U.ERR("ctx/task", "task %s aborted with error: %s, %s", self.name, tostring(self.result[2]), debug.traceback(self.cr))
+      U.ERR({"ctx","task"}, "task %s aborted with error: %s, %s", self.name, tostring(self.result[2]), debug.traceback(self.cr))
       if not self.ignore_errors then error(tostring(self.result[2])) end
     end
     if self.next_task then
@@ -240,7 +240,7 @@ function task:wait(event, cond, timeout)
     self:continue(e, ep)
   end)
 
-  U.DEBUG("ctx/task", "task %s waiting", self.name)
+  U.DEBUG({"ctx","task"}, "task %s waiting", self.name)
   local ret = {select(2, coroutine.yield(true))}
 
   if self.handler then
@@ -253,13 +253,13 @@ function task:wait(event, cond, timeout)
   end
 
   if self.killed then
-    U.DEBUG("ctx/task", "task %s killed", self.name)
+    U.DEBUG({"ctx","task"}, "task %s killed", self.name)
     -- the only way to reliably quit the execution of the
     -- coroutine (except from mandates to be honored by the
     -- upwards call stack) is exiting with an error
     error("killed")
   else
-    U.DEBUG("ctx/task", "task %s resuming", self.name)
+    U.DEBUG({"ctx","task"}, "task %s resuming", self.name)
   end
 
   return unpack(ret)

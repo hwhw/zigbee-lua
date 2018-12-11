@@ -13,18 +13,30 @@ end
 -- logging:
 util.logoutput = io.stderr
 function util.log(level, subsys, ...)
-  local msg = os.date("[%Y-%m-%d %H:%M:%S] <") .. level .. "> " .. subsys .. ": " .. string.format(...) .. "\n"
+  subsys = (type(subsys)=="table") and subsys or {subsys}
+  config.log = config.log or {DBG={false}}
+  local do_log = true
+  local domain = config.log[level]
+  local n = 1
+  while domain ~= nil do
+    if type(domain)=="table" then
+      if domain[1]~=nil then do_log = domain[1] end
+      domain = domain[subsys[n]]
+      n = n+1
+    else
+      do_log = domain
+      domain = nil
+    end
+  end
+  if not do_log then return nil end
+
+  local msg = os.date("[%Y-%m-%d %H:%M:%S] <") .. level .. "> " .. table.concat(subsys,"|") .. ": " .. string.format(...) .. "\n"
   util.logoutput:write(msg)
   return msg
 end
 function util.ERR(subsys, ...) return false, util.log("ERR", subsys, ...) end
 function util.INFO(subsys, ...) return true, util.log("INF", subsys, ...) end
-function util.DEBUG(subsys, ...)
-  if config.debug and string.match(subsys, config.debugsel) then
-    return true, util.log("DBG", subsys, ...)
-  end
-  return true
-end
+function util.DEBUG(subsys, ...) return true, util.log("DBG", subsys, ...) end
 
 -- tools for tables:
 function util.contains(search_in, search_for)
