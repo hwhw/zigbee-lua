@@ -4,9 +4,6 @@
 [submodule "inspect.lua"]
 	path = lib/inspect-lua
 	url = https://github.com/kikito/inspect.lua.git
-[submodule "LuLPeg"]
-	path = lib/LuLPeg
-	url = https://github.com/pygy/LuLPeg.git
 [submodule "json.lua"]
 	path = lib/json-lua
 	url = https://github.com/rxi/json.lua
