@@ -8,7 +8,7 @@ local ctx = {
 
 ctx.srv = require(ctx.config.srv_implementation)
 
-function ctx:run()
+function ctx:init()
   for class, instances in pairs(self.config.interfaces) do
     for n, config in ipairs(instances) do
       self.interfaces[class] = self.interfaces[class] or {}
@@ -16,6 +16,10 @@ function ctx:run()
     end
   end
 
+  return self
+end
+
+function ctx:run()
   return self.srv:loop()
 end
 

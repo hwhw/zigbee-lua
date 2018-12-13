@@ -24,12 +24,13 @@ function devdb:open(filename)
 end
 function devdb:save()
   -- TODO: make this a write to a temp new file and an atomic move
+  local json = json.encode(self.devs)
   local file, err = io.open(self.filename, "w")
   if not file then
     U.ERR(z, "cannot open database file %s, error: %s", filename, err)
     return
   end
-  file:write(json.encode(self.devs))
+  file:write(json)
   file:close()
   U.INFO(z, "device database written to file")
 end
@@ -210,7 +211,27 @@ function zigbee:init()
         local dev = self.devices:find(msg.id)
         if dev then
           if msg.key then
-            dev[msg.key] = dev[msg.value]
+            dev[msg.key] = msg.value
+          end
+          self.devices:save()
+        end
+      end
+    end
+  end}
+  -- handling of device naming and suchlike
+  ctx.task{name="zigbee_device_db", function()
+    while true do
+      local ok, msg = ctx:wait{"Zigbee", "device_db"}
+      if not ok then
+        U.ERR(z, "error waiting for device_attribute message")
+      else
+        if msg.cmd and msg.cmd=="copy" then
+          local dev = self.devices:find(msg.id)
+          if dev then
+            local ndev = U.copy(dev)
+            ndev.name = msg.name
+            ndev.nwkaddr = msg.nwkaddr
+            self.devices:set(msg.newid, ndev)
           end
           self.devices:save()
         end

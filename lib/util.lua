@@ -98,6 +98,12 @@ function util.B(bstr, pos, acc)
   return util.B(bstr, pos+1, bit.bor(bit.lshift(acc, 1), string.byte(bstr, pos) == 0x31 and 1 or 0))
 end
 
+function util.copy(t)
+  if type(t) ~= "table" then return t end
+  local n = {}
+  for k, v in pairs(t) do n[k] = util.copy(v) end
+  return n
+end
 
 function util.hexdump(buffer)
   local p = 1
