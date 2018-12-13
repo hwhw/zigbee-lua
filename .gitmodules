@@ -7,3 +7,9 @@
 [submodule "json.lua"]
 	path = lib/json-lua
 	url = https://github.com/rxi/json.lua
+[submodule "lib/ffi_libmicrohttpd"]
+	path = lib/ffi_libmicrohttpd
+	url = https://github.com/hwhw/ffi_libmicrohttpd.git
+[submodule "lib/ffi_libmosquitto"]
+	path = lib/ffi_libmosquitto
+	url = https://github.com/hwhw/ffi_libmosquitto.git

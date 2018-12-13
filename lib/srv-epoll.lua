@@ -27,19 +27,20 @@ local poll = {
       cb = callbacks
     }
 		E.event.events = events or S.c.EPOLL.IN
-		E.event.data.fd = s:getfd()
+		E.event.data.fd = type(s)=="number" and s or s:getfd()
 		U.assert(this.fd:epoll_ctl("add", s, E.event))
     U.DEBUG("srv", "added FD %d to epoll group", E.event.data.fd)
     this.fds[E.event.data.fd] = E
 	end,
 	del = function(this, s)
-		local E = this.fds[s:getfd()]
+    local fd = type(s)=="number" and s or s:getfd()
+		local E = this.fds[fd]
     if E then
       U.assert(this.fd:epoll_ctl("del", s, E.event))
-      this.fds[E.event.data.fd] = nil
-      U.DEBUG("srv", "removed FD %d from epoll group", s:getfd())
+      this.fds[fd] = nil
+      U.DEBUG("srv", "removed FD %d from epoll group", fd)
     else
-      U.ERR("srv", "cannot remove socket %d from epoll group, no entry", s:getfd())
+      U.ERR("srv", "cannot remove socket %d from epoll group, no entry", fd)
     end
 	end,
 	events = S.t.epoll_events(maxevents),
