@@ -4,7 +4,12 @@ local json = require"lib.json-lua.json"
 
 local z = "Zigbee"
 local ZCL=require"interfaces.zigbee.zcl"
-local zigbee = U.object:new{ev = {}, ZCL=ZCL, dongle=nil}
+local zigbee = U.object:new{
+  ev = {},
+  ZCL = ZCL,
+  dongle = nil,
+  ieeeaddrcache = {}
+}
 
 local devdb = U.object:new()
 function devdb:open(filename)
@@ -62,6 +67,13 @@ function devdb:find(id)
   end
   return dev, ieeeaddr
 end
+function devdb:names()
+  local names = {}
+  for _, d in pairs(self.devs) do
+    if d.name then table.insert(names, d.name) end
+  end
+  return names
+end
 function devdb:set(ieeeaddr, data)
   local old = self:ieee(ieeeaddr)
   if old then
@@ -105,7 +117,11 @@ end
 
 function zigbee:unknown_dev(nwkaddr)
   U.INFO(z, "unknown device with NWK addr: %04x", nwkaddr)
-  local ieeeaddr = self.dongle:get_ieeeaddr(nwkaddr)
+  local ieeeaddr = self.ieeeaddrcache[nwkaddr]
+  if not ieeeaddr then
+    ieeeaddr = self.dongle:get_ieeeaddr(nwkaddr)
+    self.ieeeaddrcache[nwkaddr] = ieeeaddr
+  end
   if ieeeaddr then
     U.INFO(z, "device has IEEEAddr %s, provisioning device", ieeeaddr)
     self:provision_device(ieeeaddr, nwkaddr)
@@ -115,6 +131,7 @@ end
 
 function zigbee:init()
   self.devices = devdb:open(self.device_database)
+  self.ieeeaddrcache = {}
   self.dongle = require("interfaces.zigbee.devices."..self.device.class):new(self.device):init()
 
   ctx.task{name="initialize", function()
@@ -172,6 +189,7 @@ function zigbee:init()
         U.ERR(z, "error waiting for AF message transmit")
       else
         local dev, ieeeaddr = self.devices:find(msg.dst)
+        U.DEBUG(z, "sending ZCL message to device %s, cluster %04x: %s", ieeeaddr, msg.cluster, U.dump(msg.data))
         if dev then
           if not dev.eps then
             U.ERR(z, "no endpoint information for device %s", msg.dst)
