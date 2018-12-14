@@ -2,7 +2,7 @@ local U = require"lib.util"
 
 local ctx = {
   config = require"config",
-  tasks_waiting = {},
+  tasks_waiting = {_handlers={}},
   interfaces = {}
 }
 
@@ -26,13 +26,13 @@ end
 -- event handlers
 
 local function handlersel(acc, tlist, event, depth)
-  for _, handler in ipairs(tlist) do
+  for _, handler in ipairs(tlist._handlers) do
       table.insert(acc, handler)
   end
   local e = event[depth]
-  if not e then return end
+  if e==nil then return end
   local l = tlist[e]
-  if not l then return end
+  if l==nil then return end
   return handlersel(acc, l, event, depth+1)
 end
 
@@ -63,11 +63,11 @@ end
 function ctx:on(event, cond, callback)
   local tlist = self.tasks_waiting
   for _, e in ipairs(event) do
-    if not tlist[e] then tlist[e] = {} end
+    if not tlist[e] then tlist[e] = {_handlers={}} end
     tlist = tlist[e]
   end
   local handler = {cond=cond, callback=callback}
-  table.insert(tlist, handler)
+  table.insert(tlist._handlers, handler)
   return handler
 end
 
@@ -78,9 +78,9 @@ function ctx:drop(event, handler)
     if not tlist[e] then return end
     tlist = tlist[e]
   end
-  for k, h in ipairs(tlist) do
+  for k, h in ipairs(tlist._handlers) do
     if h == handler then
-      table.remove(tlist, k)
+      table.remove(tlist._handlers, k)
       return
     end
   end
@@ -140,7 +140,7 @@ function task:finish()
     local task = self:next(function(t, ...)
       ctx:fire(ev)
     end)
-    taskregistry[coroutine.running()]:wait(ev)
+    taskregistry[coroutine.running()]:wait({ev})
   end
   return unpack(self.result)
 end
@@ -190,7 +190,7 @@ function task:parallel(tasks, max_successful, max_errors)
       end
     end
     for subtask, i in pairs(running) do
-      local _, ep = t:wait(ev)
+      local _, ep = t:wait({ev})
       if check(ep[1], ep[2]) then return results end
     end
     return results
@@ -214,6 +214,12 @@ function task:continue(...)
     if self.next_task then
       return self.next_task:continue(unpack(self.result))
     end
+  else
+    -- allow for an event to be fired -- this is for communication
+    -- between two tasks via events
+    if self.result[2] then
+      ctx:fire(self.result[2], self.result[3])
+    end
   end
   return self
 end
@@ -233,29 +239,39 @@ end
 -- optionally, check the event parameter value against additional
 -- conditions using a function that is passed as the cond argument
 -- also, optionally honor a timeout (given in seconds, float values OK)
-function task:wait(event, cond, timeout)
+--
+-- also allow for an event to be fired right after entering wait state,
+-- which allows to listen for an "answer" event
+function task:wait(event, cond, timeout, fireevent, fireeventparams)
   local cr = coroutine.running()
   assert(self.cr == cr, "a task is supposed to call its own wait() method")
 
+  -- set timeout timer if applicable
   self.timer = timeout and ctx.srv:timer(timeout, function()
     self:continue(false, "timeout")
   end)
-  self.handler = event and ctx:on(event, cond, function(e, ep)
-    self:continue(e, ep)
+  -- register event to wait for
+  self.handler = event and ctx:on(event, cond, function(ev, ep)
+    self:continue(ev, ep)
   end)
 
   U.DEBUG({"ctx","task"}, "task %s waiting", self.name)
-  local ret = {select(2, coroutine.yield(true))}
+  -- yield (enter waiting state)
+  local ret = {select(2, coroutine.yield(fireevent, fireeventparams))}
+  -- from here, we're running again
 
+  -- unregister event handler
   if self.handler then
     ctx:drop(event, self.handler)
-    self.handler = nil
   end
+  self.handler = nil
+  -- unregister timer
   if self.timer then
     ctx.srv:timer_del(self.timer)
     self.timer = nil
   end
 
+  -- handle external kill request
   if self.killed then
     U.DEBUG({"ctx","task"}, "task %s killed", self.name)
     -- the only way to reliably quit the execution of the
@@ -269,10 +285,9 @@ function task:wait(event, cond, timeout)
   return unpack(ret)
 end
 
--- convenience method that acts on the current task
-function ctx:wait(...)
-  assert(taskregistry[coroutine.running()], "wait() called outside a task context")
-  return taskregistry[coroutine.running()]:wait(...)
+-- iterator wrapper
+function task:wait_all(event, cond, timeout, fireevent, fireeventparams)
+  return function() return self:wait(event, cond, timeout, fireevent, fireeventparams) end
 end
 
 -- convenience wrapper to simply sleep for a given number
@@ -281,11 +296,15 @@ function task:sleep(timeout)
   return self:wait(nil, nil, timeout)
 end
 
--- convenience method that acts on the current task
-function ctx:sleep(...)
-  assert(taskregistry[coroutine.running()], "wait() called outside a task context")
-  return taskregistry[coroutine.running()]:sleep(...)
+function ctx:currenttask()
+  assert(taskregistry[coroutine.running()], "called outside a task context")
+  return taskregistry[coroutine.running()]
 end
+
+-- convenience methods that act on the current task
+function ctx:wait(...) return self:currenttask():wait(...) end
+function ctx:wait_all(...) return self:currenttask():wait_all(...) end
+function ctx:sleep(...) return self:currenttask():sleep(...) end
 
 -- ctx.task is an instance so the __call metamethod works as
 -- intended
