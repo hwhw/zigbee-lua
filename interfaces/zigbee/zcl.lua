@@ -261,7 +261,11 @@ msg{"Attribute",
   iftype("single", float{"Value"}),
   iftype("double", double{"Value"}),
   iftype("octstr", arr{"Value", asstring=true, type=t_U8, counter=t_U8}),
+
+  --TODO: some messages from Aqara buttons have a string value that has a length indication that is
+  --wrong by 1. We might want to ignore this exact special case instead of throwing an error?
   iftype("string", arr{"Value", asstring=true, type=t_U8, counter=t_U8}),
+
   iftype("octstr16", arr{"Value", asstring=true, type=t_U8, counter=t_U16}),
   iftype("string16", arr{"Value", asstring=true, type=t_U8, counter=t_U16}),
   iftype("array", nil), -- not yet implemented

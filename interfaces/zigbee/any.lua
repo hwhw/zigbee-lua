@@ -149,26 +149,21 @@ end
 
 function any:on_button_press(cb)
   ctx.task{name=string.format("%s/on_button_press", self.id),function()
-    local filter = function(msg)
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
       return msg.cluster == 6 and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes
-    end
-    while true do
-      local ok, msg = ctx:wait({"Zigbee", "ZCL", "from", self.id}, filter)
-      if not ok then
-        U.ERR("Zigbee_any/on_button_press", "error while waiting for event")
-      else
-        U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
-        local btn = msg.srcep
-        for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
-          if r.AttributeIdentifier == 0x8000 then
-            --TODO: add more checks for device?
-            -- assuming Aqara touch button
-            cb(btn, r.Attribute.Value)
-            break
-          elseif r.AttributeIdentifier == 0 and r.Attribute.Value then
-            cb(btn, 1)
-            break
-          end
+      end) do
+
+      U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
+      local btn = msg.srcep
+      for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
+        if r.AttributeIdentifier == 0x8000 then
+          --TODO: add more checks for device?
+          -- assuming Aqara touch button
+          cb(btn, r.Attribute.Value)
+          break
+        elseif r.AttributeIdentifier == 0 and r.Attribute.Value then
+          cb(btn, 1)
+          break
         end
       end
     end
@@ -177,21 +172,39 @@ end
 
 function any:on_occupancy(cb)
   ctx.task{name=string.format("%s/on_occupancy", self.id),function()
-    while true do
-      local ok, msg = ctx:wait{"Zigbee", "ZCL", "from", self.id}
-      if not ok then
-        U.ERR("Zigbee_any/on_occupancy", "error while waiting for event")
-      else
-        U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
-        if msg.cluster == 0x406 and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes then
-          local btn = msg.ep
-          for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
-            if r.AttributeIdentifier == 0 and r.Attribute.Value[0] then
-              cb()
-              break
-            end
-          end
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
+      return msg.cluster == 0x406 and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes
+      end) do
+
+      U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
+      local btn = msg.ep
+      for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
+        if r.AttributeIdentifier == 0 and r.Attribute.Value[0] then
+          cb()
+          break
         end
+      end
+    end
+  end}
+end
+
+function any:on_aqara_report(cb)
+  local aqaracodec=require"interfaces.zigbee.xiaomi-aqara""AqaraReport"
+  ctx.task{name=string.format("%s/on_aqara_report", self.id),function()
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
+      return msg and msg.cluster == 0
+        and msg.data and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes
+        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports
+        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1]
+        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute
+        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].AttributeIdentifier==65281
+        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Type=="string"
+        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value
+      end) do
+      local data = aqaracodec:decode({string.byte(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value,1,-1)})
+      if data then
+        U.DEBUG("Zigbee_any", "got Xiaomi/Aqara attributes: %s", U.dump(data))
+        if cb then cb(data) end
       end
     end
   end}
