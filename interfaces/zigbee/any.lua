@@ -193,7 +193,10 @@ function any:on_aqara_report(cb)
   ctx.task{name=string.format("%s/on_aqara_report", self.id),function()
     for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
       return msg and msg.cluster == 0
-        and msg.data and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes
+        and msg.data
+        and msg.data.ManufacturerCode==4447
+        and msg.data.GeneralCommandFrame
+        and msg.data.GeneralCommandFrame.ReportAttributes
         and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports
         and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1]
         and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute
