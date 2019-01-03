@@ -97,6 +97,26 @@ function any:get_attributes(cluster, attributes, at_once)
   end
   return values
 end
+function any:set_attributes(cluster, attribs)
+  local attrlist = {}
+  for _, a in ipairs(attribs) do
+    table.insert(attrlist, {
+      AttributeIdentifier = a[1],
+      Attribute = {
+        Type = a[2],
+        Value = a[3]
+      }
+    })
+  end
+  self:send_af(cluster, {
+    GeneralCommandFrame = {
+      CommandIdentifier = "WriteAttributes",
+      WriteAttributes = {
+        WriteAttributeRecords = attrlist
+      }
+    }
+  }, true)
+end
 
 function any:identify(time)
   self:send_af(0x0003, {
