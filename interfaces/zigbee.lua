@@ -183,6 +183,7 @@ function zigbee:init()
   end}
   -- handling of outgoing data
   ctx.task{name="zigbee_tx_handler", function()
+    local fcodec = ZCL"Frame"
     while true do
       local ok, msg = ctx:wait{"Zigbee", "ZCL", "to"}
       if not ok then
@@ -203,16 +204,21 @@ function zigbee:init()
             if not dst_ep then
               U.ERR(z, "no endpoint on device %s for cluster %04x", msg.dst, msg.cluster)
             else
-              self.dongle:sreq("AF_DATA_REQUEST", {
-                DstAddr = dev.nwkaddr,
-                DstEndpoint = dst_ep,
-                SrcEndpoint = 1, -- TODO: make this flexible
-                ClusterId = msg.cluster,
-                TransId = 1,
-                Options = {},
-                Radius = dev.defaultradius or 3,
-                Data = ZCL"Frame":encode(msg.data, {ClusterId = msg.cluster})
-              })
+              local ok, frame = xpcall(fcodec.encode, debug.traceback, fcodec, msg.data, {ClusterId = msg.cluster})
+              if not ok then
+                U.ERR(z, "could not encode ZCL data, error: %s", frame)
+              else
+                self.dongle:sreq("AF_DATA_REQUEST", {
+                  DstAddr = dev.nwkaddr,
+                  DstEndpoint = dst_ep,
+                  SrcEndpoint = 1, -- TODO: make this flexible
+                  ClusterId = msg.cluster,
+                  TransId = 1,
+                  Options = {},
+                  Radius = dev.defaultradius or 3,
+                  Data = frame
+                })
+              end
             end
           end
         end
