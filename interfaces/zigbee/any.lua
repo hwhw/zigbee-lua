@@ -124,6 +124,30 @@ function any:identify(time)
   })
 end
 
+function any:add_group(group_id, group_name)
+  self:send_af(0x0004, {
+    GroupsClusterFrame = { CommandIdentifier = "AddGroup", AddGroup = { GroupId = group_id, GroupName = group_name or "" } }
+  })
+end
+function any:get_group_membership()
+  local ok, msg = self:send_af(0x0004, {
+    GroupsClusterFrame = { CommandIdentifier = "GetGroupMembership", GetGroupMembership = { Groups = {} } }
+  }, false, 2)
+  if ok
+    and msg.data
+    and msg.data.GroupsClusterFrame
+    and msg.data.GroupsClusterFrame.GetGroupMembershipResponse
+    and msg.data.GroupsClusterFrame.GetGroupMembershipResponse.Groups
+  then
+    return msg.data.GroupsClusterFrame.GetGroupMembershipResponse.Groups, msg.data.GroupsClusterFrame.GetGroupMembershipResponse.Capacity
+  end
+end
+function any:remove_group(group_id)
+  self:send_af(0x0004, {
+    GroupsClusterFrame = { CommandIdentifier = "RemoveGroup", RemoveGroup = { GroupId = group_id } }
+  })
+end
+
 function any:switch(cmd)
   self:send_af(0x0006, {
     OnOffClusterFrame = { CommandIdentifier = cmd }
