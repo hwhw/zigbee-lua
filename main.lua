@@ -1,3 +1,3 @@
 local ctx = require"lib.ctx":init()
-ctx.environment = require(arg[1])
+if arg[1] then ctx.environment = require(arg[1]) end
 ctx:run()
