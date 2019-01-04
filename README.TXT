@@ -48,6 +48,33 @@ Description of software structure:
     interfaces/zigbee/cc-znp.lua
 
 
+Usage:
+------
+
+The following description assumes that you want to use this software to build
+a home automation infrastructure with Zigbee devices - which is what drove the
+development of this software in the first place. But note that you can probably
+use this software for other tasks, too.
+
+1. Prepare hardware
+  * At the moment, the CC253x devices (CC2531 USB stick, CC2530 via UART) are
+    the only supported hardware. Support for ETRX357 based devices (featuring
+    the AT-command firmware support) is planned.
+  * CC253x: flash with appropriate firmware. See firmware remarks for a very
+    subjective view on what you should use.
+2. optional: configure USB serial interface permissions
+   This might be your chance to look and see what udev is and can do for you
+3. edit/adapt config.lua
+4. run main.lua via LuaJIT
+
+Then:
+
+* peruse scripts in contrib/ to show list of known devices, permit network
+  joins, name devices, ...
+* create an "environment" by writing event handling functions that trigger
+  actions
+
+
 Similar projects:
 -----------------
 
