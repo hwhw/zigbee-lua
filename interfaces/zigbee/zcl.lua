@@ -653,7 +653,38 @@ msg{"ScenesClusterFrame",
     {"EnhancedViewScene",   0x41, 0xFF},
     {"CopyScene",           0x42, 0xFF}
   },
+  commandfromserver{
+    {"AddSceneResponse",            0x00, 0xFF},
+    {"ViewSceneResponse",           0x01, 0xFF},
+    {"RemoveSceneResponse",         0x02, 0xFF},
+    {"RemoveAllScenesResponse",     0x03, 0xFF},
+    {"StoreSceneResponse",          0x04, 0xFF},
+    {"RecallSceneResponse",         0x05, 0xFF},
+    {"GetSceneMembershipResponse",  0x06, 0xFF},
+    {"EnhancedAddSceneResponse",    0x40, 0xFF},
+    {"EnhancedViewSceneResponse",   0x41, 0xFF},
+    {"CopySceneResponse",           0x42, 0xFF}
+  },
   cmdref"AddScene",
+  cmdref"ViewScene",
+  cmdref"RemoveScene",
+  cmdref"RemoveAllScenes",
+  cmdref"StoreScene",
+  cmdref"RecallScene",
+  cmdref"GetSceneMembership",
+  cmdref"EnhancedAddScene",
+  cmdref"EnhancedViewScene",
+  cmdref"CopyScene",
+  cmdref"AddSceneResponse",
+  cmdref"ViewSceneResponse",
+  cmdref"RemoveSceneResponse",
+  cmdref"RemoveAllScenesResponse",
+  cmdref"StoreSceneResponse",
+  cmdref"RecallSceneResponse",
+  cmdref"GetSceneMembershipResponse",
+  cmdref"EnhancedAddSceneResponse",
+  cmdref"EnhancedViewSceneResponse",
+  cmdref"CopySceneResponse",
 }
 
 msg{"AddScene",
@@ -661,9 +692,127 @@ msg{"AddScene",
   U8  {"SceneId"},
   U16 {"TransitionTime"},
   arr {"SceneName", asstring=true, type=t_U8, counter=t_U8},
-  -- TODO: extension field sets
+  arr {"ExtensionFieldSets",
+    U16 {"ClusterId"},
+    -- TODO: better reflect content of extension field sets
+    arr {"ExtensionFieldSetData", type=t_U8, counter=t_U8}
+  }
 }
--- TODO: rest of Scenes Cluster
+msg{"AddSceneResponse",
+  map {ref="Status"},
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+
+msg{"ViewScene",
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+msg{"ViewSceneResponse",
+  map {ref="Status"},
+  U16 {"GroupId"},
+  U8  {"SceneId"},
+  U16 {"TransitionTime"},
+  arr {"SceneName", asstring=true, type=t_U8, counter=t_U8},
+  arr {"ExtensionFieldSets",
+    U16 {"ClusterId"},
+    arr {"ExtensionFieldSetData", type=t_U8, counter=t_U8}
+  }
+}
+
+msg{"RemoveScene",
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+msg{"RemoveSceneResponse",
+  map {ref="Status"},
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+
+msg{"RemoveAllScenes",
+  U16 {"GroupId"}
+}
+msg{"RemoveAllScenesResponse",
+  map {ref="Status"},
+  U16 {"GroupId"}
+}
+
+msg{"StoreScene",
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+msg{"StoreSceneResponse",
+  map {ref="Status"},
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+
+msg{"RecallScene",
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+msg{"RecallSceneResponse",
+  map {ref="Status"},
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+
+msg{"GetSceneMembership",
+  U16 {"GroupId"}
+}
+msg{"GetSceneMembershipResponse",
+  map {ref="Status"},
+  U8  {"Capacity"},
+  U16 {"GroupId"},
+  arr {"Scenes", type=t_U8, counter=t_U8}
+}
+
+msg{"EnhancedAddScene",
+  U16 {"GroupId"},
+  U8  {"SceneId"},
+  U16 {"TransitionTime"},
+  arr {"SceneName", asstring=true, type=t_U8, counter=t_U8},
+  arr {"ExtensionFieldSets",
+    U16 {"ClusterId"},
+    -- TODO: better reflect content of extension field sets
+    arr {"ExtensionFieldSetData", type=t_U8, counter=t_U8}
+  }
+}
+msg{"EnhancedAddSceneResponse",
+  map {ref="Status"},
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+
+msg{"EnhancedViewScene",
+  U16 {"GroupId"},
+  U8  {"SceneId"}
+}
+msg{"EnhancedViewSceneResponse",
+  map {ref="Status"},
+  U16 {"GroupId"},
+  U8  {"SceneId"},
+  U16 {"TransitionTime"},
+  arr {"SceneName", asstring=true, type=t_U8, counter=t_U8},
+  arr {"ExtensionFieldSets",
+    U16 {"ClusterId"},
+    arr {"ExtensionFieldSetData", type=t_U8, counter=t_U8}
+  }
+}
+
+msg{"CopyScene",
+  U8  {"Mode"},
+  U16 {"GroupIdFrom"},
+  U8  {"SceneIdFrom"},
+  U16 {"GroupIdTo"},
+  U8  {"SceneIdTo"}
+}
+msg{"CopySceneResponse",
+  map {ref="Status"},
+  U16 {"GroupIdFrom"},
+  U8  {"SceneIdFrom"}
+}
 
 -- ON/OFF CLUSTER
 
