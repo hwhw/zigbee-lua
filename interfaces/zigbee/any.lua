@@ -233,4 +233,44 @@ function any:on_aqara_report(cb)
   end}
 end
 
+function any:on_cube_action(cb)
+  ctx.task{name=string.format("%s/on_cube_action", self.id),function()
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
+      return (msg.cluster == 0x0c or msg.cluster == 0x12)
+        and msg.data.GeneralCommandFrame
+        and msg.data.GeneralCommandFrame.ReportAttributes
+        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports
+      end) do
+      U.DEBUG("Zigbee_any", "got cube event: %s", U.dump(msg))
+      for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
+        if r.AttributeIdentifier == 0x55 then
+          local v = r.Attribute.Value
+          if msg.cluster == 0x0c then
+            -- this is a "turn", like with a potentiometer
+            cb("turn", v)
+          elseif msg.cluster == 0x12 then
+            -- this is one of the other event types:
+            if v == 0 then
+              cb("shake")
+            elseif v == 2 then
+              cb("wakeup")
+            elseif v == 3 then
+              cb("fall")
+            elseif v >= 512 then
+              cb("tap", v-512)
+            elseif v >= 256 then
+              cb("slide", v-256)
+            elseif v >= 128 then
+              cb("flip", v-128)
+            elseif v >= 64 then
+              cb("roll", v % 8, math.floor((v-64)/8))
+            end
+          end
+          return
+        end
+      end
+    end
+  end}
+end
+
 return any
