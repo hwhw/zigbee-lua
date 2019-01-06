@@ -290,7 +290,7 @@ function any:on_cube_action(cb)
               cb("roll", v % 8, math.floor((v-64)/8))
             end
           end
-          return
+          break
         end
       end
     end
