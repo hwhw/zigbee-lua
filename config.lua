@@ -24,6 +24,14 @@ return {
         },
         device_database = "device_database.json"
       }
+    },
+    mqtt_client = {
+      {
+        host = '127.0.0.1',
+        port = 1883,
+        --username = 'myusername',
+        --password = 'mypassw0rd',
+      }
     }
   },
 

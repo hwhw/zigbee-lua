@@ -173,7 +173,7 @@ function zigbee:init()
           local ok, data = ZCL"Frame":safe_decode(msg.data,{ClusterId=msg.clusterid})
           if ok then
             U.DEBUG(z, "parsed: %s", U.dump(data))
-            ctx:fire({"Zigbee", "ZCL", "from", dev.name or ieeeaddr}, {cluster = msg.clusterid, srcep = msg.srcendpoint, data = data})
+            ctx:fire({"Zigbee", "ZCL", "from", dev.name or ieeeaddr}, {from = ieeeaddr, cluster = msg.clusterid, srcep = msg.srcendpoint, data = data})
           else
             U.INFO(z, "error decoding ZCL message: %s", data)
           end
