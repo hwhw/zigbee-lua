@@ -90,6 +90,7 @@ function httpd:init()
   end
 
   self:sync_fdsets()
+  return self
 end
 
 return httpd
