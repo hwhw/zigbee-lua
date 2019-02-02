@@ -2,6 +2,7 @@ local ctx = require"lib.ctx"
 local U = require"lib.util"
 
 local M = require"lib.ffi_libmosquitto.mosquitto"
+local ffi = require"ffi"
 local json = require"lib.json-lua.json"
 
 local mqtt_client = U.object:new()
@@ -28,8 +29,12 @@ end
 function mqtt_client:subscribe(sub, qos)
   U.INFO("mqtt_client", "subscribing to MQTT topic <%s>", sub)
   self.client:subscribe_message_callback(sub, qos or 0, function(message)
-    U.DEBUG("mqtt_client", "got MQTT message: %s", U.dump(message))
-    ctx:fire({"mqtt_client", "message", self.id}, message)
+    local msg = {
+      topic = ffi.string(message.topic),
+      payload = ffi.string(message.payload, message.payloadlen)
+    }
+    U.DEBUG("mqtt_client", "got MQTT message: %s", U.dump(msg))
+    ctx:fire({"mqtt_client", "message", self.id}, msg)
   end)
 end
 

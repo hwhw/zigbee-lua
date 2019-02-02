@@ -11,6 +11,8 @@ Features:
 * start up a Zigbee coordinator
 * maintain a simple device database
 * TCP interface for injecting code into the running instance
+* MQTT client that allows for publishing/subscribing (still rough around
+  the edges, see mqtt-environment.lua for a very basic example)
 * ZCL abstraction to build/parse data packages
 
 Device related notes:
@@ -122,7 +124,6 @@ core that allows quite some flexibility.
 Road map:
 ---------
 
-* MQTT interface (as soon as I feel I need it)
 * Something to store/analyze sensor data (temperature & so on)
 * Better abstracted Zigbee device classes (rather than the "any.lua" which
   does a bit of everything)
