@@ -58,23 +58,43 @@ a home automation infrastructure with Zigbee devices - which is what drove the
 development of this software in the first place. But note that you can probably
 use this software for other tasks, too.
 
-1. Prepare hardware
+1. Prepare software
+  * check out the git submodules. You do not need luarocks or similar lua
+    package management. Just do:
+    - git submodule init
+    - git submodule update
+2. Prepare hardware
   * At the moment, the CC253x devices (CC2531 USB stick, CC2530 via UART) are
     the only supported hardware. Support for ETRX357 based devices (featuring
     the AT-command firmware support) is planned.
   * CC253x: flash with appropriate firmware. See firmware remarks for a very
     subjective view on what you should use.
-2. optional: configure USB serial interface permissions
+3. optional: configure USB serial interface permissions
    This might be your chance to look and see what udev is and can do for you
-3. edit/adapt config.lua
-4. run main.lua via LuaJIT
+4. edit/adapt config.lua
+5. run main.lua via LuaJIT, optionally giving the name (without .lua suffix)
+   of an "environment" as additional argument.
 
 Then:
 
 * peruse scripts in contrib/ to show list of known devices, permit network
   joins, name devices, ...
 * create an "environment" by writing event handling functions that trigger
-  actions
+  actions. Have a look at the example environments in the project's root
+  directory.
+
+
+Notes:
+------
+
+On some platforms (seen on aarch64, mips), there instabilities and bad memory
+accesses. This might be due to a bug (looking at you, external library
+interfaces) - or it might be due to LuaJIT not being up to the task on those
+platforms. The code of zigbee-lua uses coroutines *heavily*. This is something
+that a lot of Lua code does without and the maintenance of parallel state
+might be a less trodden path. If you are not in the mood to debug and fix
+these problems but want to get rid of them, try running LuaJIT with the
+"-j off" flag. Works for me.
 
 
 Similar projects:
