@@ -37,7 +37,7 @@ ctx.task{name="mqtt_outgoing",function()
         if ok then
           M:publish(string.format("/zigbee-lua/%s/aqarareport", msg.from), msg_json)
         else
-          U.ERROR("mqtt_environment", "error converting message to JSON, skipping.")
+          U.ERR("mqtt_environment", "error converting message to JSON, skipping.")
         end
       end
     else
@@ -45,7 +45,7 @@ ctx.task{name="mqtt_outgoing",function()
       if ok then
         M:publish(string.format("/zigbee-lua/%s/%d/%d", msg.from, msg.cluster, msg.srcep), msg_json)
       else
-        U.ERROR("mqtt_environment", "error converting message to JSON, skipping.")
+        U.ERR("mqtt_environment", "error converting message to JSON, skipping.")
       end
     end
   end
