@@ -30,7 +30,10 @@ function util.log(level, subsys, ...)
   end
   if not do_log then return nil end
 
-  local msg = os.date("[%Y-%m-%d %H:%M:%S] <") .. level .. "> " .. table.concat(subsys,"|") .. ": " .. string.format(...) .. "\n"
+  local msg =
+    os.date("[%Y-%m-%d %H:%M:%S] <") .. level .. "> " ..
+    table.concat(subsys,"|") .. ": " .. string.format(...) .. "\n"
+
   util.logoutput:write(msg)
   return msg
 end
@@ -73,7 +76,7 @@ function util.filter(f)
   end
 end
 function util.fromhex(v)
-  d={}
+  local d={}
   for s in string.gmatch(v, "(%x%x)") do table.insert(d, tonumber(s,16)) end
   return d
 end
@@ -120,7 +123,7 @@ function util.hexdump(buffer)
     if p == #buffer then
       local mod = p % 16
       if mod > 0 then
-        for i = mod, 15 do table.insert(acc, "   ") end
+        for _ = mod, 15 do table.insert(acc, "   ") end
       end
     end
     if p % 16 == 0 or p == #buffer then
