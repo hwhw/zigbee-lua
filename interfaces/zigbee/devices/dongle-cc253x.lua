@@ -54,15 +54,11 @@ function dongle:areq(areqname, data)
   self:sendpackage(ccznp:encode{Cmd=req,[req]=(data or {})})
 end
 
-function dongle:waitreq(reqname, timeout, cond)
-  return ctx:wait({"CC-ZNP-MT", self, reqname}, cond, timeout)
-end
-
 function dongle:sreq(sreqname, data, timeout)
   U.DEBUG({self.subsys,"sreq"}, "sending SREQ %s, data: %s", sreqname, U.dump(data))
   local sreq, srsp = "SREQ_"..sreqname, "SRSP_"..sreqname
   self:sendpackage(ccznp:encode{Cmd=sreq,[sreq]=(data or {})})
-  return self:waitreq("SRSP_"..sreqname, timeout or 5.0)
+  return ctx:wait({"CC-ZNP-MT", self, "SRSP_"..sreqname}, nil, timeout or 5.0)
 end
 
 function dongle:init()
@@ -127,10 +123,8 @@ function dongle:init()
 
   ctx.srv:char_reader(self.serial.fd, frame_reader)
 
-  -- TODO: no need to have these running in their own tasks?
   self.on_state_change = ctx.task{name="cc253x_state_change", function()
-    while true do
-      local _, state = self:waitreq("AREQ_ZDO_STATE_CHANGE_IND")
+    for _, state in ctx:wait_all{"CC-ZNP-MT", self, "AREQ_ZDO_STATE_CHANGE_IND"} do
       self.state = tonumber(state.State)
       U.INFO(self.subsys, "device state changed to %d", self.state)
       -- TODO: fire event (at least on relevant states)
@@ -138,24 +132,21 @@ function dongle:init()
   end}
 
   self.on_end_device_announce = ctx.task{name="cc253x_end_device_announce", function()
-    while true do
-      local _, enddevice = self:waitreq("AREQ_ZDO_END_DEVICE_ANNCE_IND")
+    for _, enddevice in ctx:wait_all{"CC-ZNP-MT", self, "AREQ_ZDO_END_DEVICE_ANNCE_IND"} do
       U.INFO(self.subsys, "end device announce received, device is %s (short: 0x%04x)", enddevice.IEEEAddr, enddevice.NwkAddr)
       ctx:fire({"Zigbee", self, "device_announce"}, {ieeeaddr = enddevice.IEEEAddr, nwkaddr = enddevice.NwkAddr})
     end
   end}
 
   self.on_leave_network = ctx.task{name="cc253x_leave_network", function()
-    while true do
-      local _, enddevice = self:waitreq("AREQ_ZDO_LEAVE_IND")
+    for _, enddevice in ctx:wait_all{"CC-ZNP-MT", self, "AREQ_ZDO_LEAVE_IND"} do
       U.INFO(self.subsys, "device %s left the network, will %srejoin the network", enddevice.IEEEAddr, enddevice.Rejoin == 0 and "not " or "")
       ctx:fire({"Zigbee", self, "device_leave"}, {ieeeaddr = enddevice.IEEEAddr})
     end
   end}
 
   self.on_af_incoming_msg = ctx.task{name="cc253x_incoming_message", function()
-    while true do
-      local _, msg = self:waitreq("AREQ_AF_INCOMING_MSG")
+    for _, msg in ctx:wait_all{"CC-ZNP-MT", self, "AREQ_AF_INCOMING_MSG"} do
       U.INFO(self.subsys.."/af", "incoming message from 0x%04x, clusterid 0x%04x, dst EP %d", msg.SrcAddr, msg.ClusterId, msg.DstEndpoint)
       local profile = false
       if msg.DstEndpoint == 1 then
@@ -176,8 +167,7 @@ function dongle:init()
   end}
 
   self.on_permit_join = ctx.task{name="cc253x_permit_join", function()
-    while true do
-      local ok, data = ctx:wait{"Zigbee", "permit_join"}
+    for ok, data in ctx:wait_all{"Zigbee", "permit_join"} do
       if not ok then
         U.ERR(self.subsys, "error waiting for permit_join event")
       elseif not data.pan_id or data.pan_id == self.pan_id then
@@ -228,7 +218,7 @@ function dongle:provision_device(nwk)
       return U.ERR(self.subsys, "error issuing node descriptor query, aborting")
     end
 
-    ok, nodedesc = check_ok(self:waitreq("AREQ_ZDO_NODE_DESC_RSP", 5+math.random(5), U.filter{NwkAddrOfInterest=nwk}))
+    ok, nodedesc = check_ok(ctx:wait({"CC-ZNP-MT", self, "AREQ_ZDO_NODE_DESC_RSP"}, U.filter{NwkAddrOfInterest=nwk}, 5+math.random(5)))
     if not ok then
       U.ERR(self.subsys, "no or bad node descriptor received for device %04x", nwk)
       if try==1 then
@@ -248,7 +238,7 @@ function dongle:provision_device(nwk)
       return U.ERR(self.subsys, "error issuing active endpoint query, aborting")
     end
 
-    ok, endpoints = check_ok(self:waitreq("AREQ_ZDO_ACTIVE_EP_RSP", 5+math.random(5), U.filter{NwkAddr=nwk}))
+    ok, endpoints = check_ok(ctx:wait({"CC-ZNP-MT", self, "AREQ_ZDO_ACTIVE_EP_RSP"}, U.filter{NwkAddr=nwk}, 5+math.random(5)))
     if not ok then
       U.ERR(self.subsys, "no or bad active endpoint info received for device %04x", nwk)
       if try==1 then
@@ -269,7 +259,7 @@ function dongle:provision_device(nwk)
         return U.ERR(self.subsys, "error issuing simple descriptor query, aborting")
       end
 
-      ok, desc = check_ok(self:waitreq("AREQ_ZDO_SIMPLE_DESC_RSP", 5+math.random(5), U.filter{NwkAddr=nwk, Endpoint=ep}))
+      ok, desc = check_ok(ctx:wait({"CC-ZNP-MT", self, "AREQ_ZDO_SIMPLE_DESC_RSP"}, U.filter{NwkAddr=nwk, Endpoint=ep}, 5+math.random(5)))
       if not ok then
         U.ERR(self.subsys, "no or bad simple descriptor received for EP %d of device %04x", ep, nwk)
         if try==1 then
@@ -296,7 +286,7 @@ function dongle:reset(retries)
   for i = 1, retries or 3 do
     U.INFO(self.subsys, "resetting device")
     self:areq("SYS_RESET_REQ")
-    local ok, r = self:waitreq("AREQ_SYS_RESET_IND", 60)
+    local ok, r = ctx:wait({"CC-ZNP-MT", self, "AREQ_SYS_RESET_IND"}, nil, 60)
     if ok then
       return U.INFO(self.subsys, "reset successful")
     end
