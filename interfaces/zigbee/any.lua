@@ -154,13 +154,54 @@ function any:switch(cmd)
   }, false, 2)
 end
 
+function any:check_on_off()
+  local is_on = self:get_attributes(0x0006, {0})
+  return is_on and is_on[0]
+end
+
+function any:color(x, y, transition_time)
+  x = x or 0.9999
+  x = (x < 1.0) and (x * 0xFFFE) or x
+  y = y or 0.9999
+  y = (y < 1.0) and (y * 0xFFFE) or y
+  self:send_af(0x0300, {
+    ColorControlClusterFrame = {
+      CommandIdentifier = "MoveToColor",
+      MoveToColor = {
+        ColorX = x,
+        ColorY = y,
+        TransitionTime = (transition_time or 1) * 10
+      }
+    }
+  }, false, 2)
+end
 function any:hue_sat(hue, sat, transition_time)
+  hue = hue or 0.9999
+  hue = (hue < 1.0) and (hue * 0xFE) or hue
+  sat = sat or 0.9999
+  sat = (sat < 1.0) and (sat * 0xFE) or sat
+  self:send_af(0x0300, {
+    ColorControlClusterFrame = {
+      CommandIdentifier = "MoveToHueAndSaturation",
+      MoveToHueAndSaturation = {
+        Hue = hue,
+        Saturation = sat,
+        TransitionTime = (transition_time or 1) * 10
+      }
+    }
+  }, false, 2)
+end
+function any:ehue_sat(hue, sat, transition_time)
+  hue = hue or 0.9999
+  hue = (hue < 1.0) and (hue * 0xFFFE) or hue
+  sat = sat or 0.9999
+  sat = (sat < 1.0) and (sat * 0xFE) or sat
   self:send_af(0x0300, {
     ColorControlClusterFrame = {
       CommandIdentifier = "EnhancedMoveToHueAndSaturation",
       EnhancedMoveToHueAndSaturation = {
-        EnhancedHue = (hue or 0.0) * 0xFFFE,
-        Saturation = (sat or 1.0) * 0xFE,
+        EnhancedHue = hue,
+        Saturation = sat,
         TransitionTime = (transition_time or 1) * 10
       }
     }
@@ -178,17 +219,53 @@ function any:ctemp(mireds, transition_time)
     }
   }, false, 2)
 end
+function any:check_ctemp()
+  local ctemp = self:get_attributes(0x0300, {7,0x400b,0x400c}) or {}
+  return ctemp[7], ctemp[0x400b], ctemp[0x400c]
+end
+--[[
+ returns capabilities (idx 0: hue/sat, 1: enhanced_hue, 2: color loop, 3: x/y, 4: ctemp),
+   current mode (0: h/s, 1: x/y, 2: ctemp, 3: eh/s),
+   hue (max: 0xFE),
+   sat (max: 0xFE),
+   enhanced_hue,
+   ctemp,
+   ctemp_min,
+   ctemp_max
+]]
+function any:check_colors()
+  local colors = self:get_attributes(0x0300, {0,1,7,8,0x4000,0x4001,0x400a,0x400b,0x400c}, 20) or {}
+  if not colors[0x400a] or not colors[8] then return end
+  return {
+    capabilities = colors[0x400a],
+    current_e = colors[0x4001],
+    current = colors[8],
+    h = colors[0],
+    s = colors[1],
+    eh = colors[0x4000],
+    ctemp = colors[7],
+    ctemp_min = colors[0x400b],
+    ctemp_max = colors[0x400c]
+  }
+end
 
-function any:level(level, transition_time)
+function any:level(level, transition_time, withonoff)
+  level = level or 0.9999
+  level = (level < 1.0) and (level * 0xFE) or level
+  local method = withonoff and "MoveToLevelWithOnOff" or "MoveToLevel"
   self:send_af(0x0008, {
     LevelControlClusterFrame = {
-      CommandIdentifier = "MoveToLevelWithOnOff",
-      MoveToLevelWithOnOff = {
-        Level = (level or 1.0) * 0xFF,
+      CommandIdentifier = method,
+      [method] = {
+        Level = level,
         TransitionTime = (transition_time or 1) * 10
       }
     }
   }, false, 2)
+end
+function any:check_level()
+  local level = self:get_attributes(0x0008, {0})
+  return level and level[0]
 end
 
 function any:on_button_press(cb)
