@@ -291,6 +291,23 @@ function any:on_button_press(cb)
   end}
 end
 
+function any:on_measurement(cluster, id, cb)
+  ctx.task{name=string.format("%s/on_measurement_temp", self.id),function()
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
+      return msg.cluster == cluster and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes
+      end) do
+
+      U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
+      for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
+        if r.AttributeIdentifier == id then
+          cb(r.Attribute.Value)
+          break
+        end
+      end
+    end
+  end}
+end
+
 function any:on_occupancy(cb)
   ctx.task{name=string.format("%s/on_occupancy", self.id),function()
     for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
