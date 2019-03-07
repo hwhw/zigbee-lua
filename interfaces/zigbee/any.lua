@@ -6,7 +6,7 @@ local any = U.object:new{
 }
 
 function any:send_af(cluster, data, global, waitreply)
-  local txseq = (self.txseq or 0) + 1
+  local txseq = ((self.txseq or 0) + 1) % 256
   self.txseq = txseq
 
   data.FrameControl = { global and "FrameTypeGlobal" or "FrameTypeLocal", "DirectionToServer" }
