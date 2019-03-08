@@ -186,10 +186,16 @@ function t_arr:decode(getc, ctx, o, root)
     end
     local item
     if self.type then
-      if self.allow_short then
+      if self.allow_short or self.fill_zero then
         local ok
         ok, item = pcall(self.type.get, self.type, getc)
-        if not ok then break end
+        if not ok then
+          if fill_zero then
+            item = 0
+          else
+            break
+          end
+        end
       else
         item = self.type:get(getc)
       end

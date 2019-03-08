@@ -262,9 +262,10 @@ msg{"Attribute",
   iftype("double", double{"Value"}),
   iftype("octstr", arr{"Value", asstring=true, type=t_U8, counter=t_U8}),
 
-  --TODO: some messages from Aqara buttons have a string value that has a length indication that is
-  --wrong by 1. We might want to ignore this exact special case instead of throwing an error?
-  iftype("string", arr{"Value", asstring=true, type=t_U8, counter=t_U8}),
+  -- some messages from Aqara buttons have a string value that has a length indication that is
+  -- wrong by 1 Byte - which is missing in the packet's payload. We substitute this
+  -- with a zero byte
+  iftype("string", arr{"Value", asstring=true, type=t_U8, counter=t_U8, fill_zero=true}),
 
   iftype("octstr16", arr{"Value", asstring=true, type=t_U8, counter=t_U16}),
   iftype("string16", arr{"Value", asstring=true, type=t_U8, counter=t_U16}),
