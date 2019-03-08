@@ -159,6 +159,7 @@ function zigbee:init()
     end
   end}
   -- handling of incoming data
+  local seq_numbers = {} -- to weed out duplicate packets
   ctx.task{name="zigbee_rx_handler", function()
     while true do
       local ok, msg = ctx:wait{"Zigbee", self.dongle, "af_message"}
@@ -172,8 +173,13 @@ function zigbee:init()
         else
           local ok, data = ZCL"Frame":safe_decode(msg.data,{ClusterId=msg.clusterid})
           if ok then
-            U.DEBUG(z, "parsed: %s", U.dump(data))
-            ctx:fire({"Zigbee", "ZCL", "from", dev.name or ieeeaddr}, {from = ieeeaddr, cluster = msg.clusterid, srcep = msg.srcendpoint, data = data})
+            if seq_numbers[ieeeaddr] and seq_numbers[ieeeaddr] == data.TransactionSequenceNumber then
+              U.DEBUG(z, "duplicate packet received, ignoring")
+            else
+              seq_numbers[ieeeaddr] = data.TransactionSequenceNumber
+              U.DEBUG(z, "parsed: %s", U.dump(data))
+              ctx:fire({"Zigbee", "ZCL", "from", dev.name or ieeeaddr}, {from = ieeeaddr, cluster = msg.clusterid, srcep = msg.srcendpoint, data = data})
+            end
           else
             U.INFO(z, "error decoding ZCL message: %s", data)
           end
