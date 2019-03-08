@@ -38,8 +38,8 @@ function mqtt_client:subscribe(sub, qos)
   end)
 end
 
-function mqtt_client:publish(topic, message)
-  self.client:publish(topic, message)
+function mqtt_client:publish(topic, message, qos, retain)
+  self.client:publish(topic, message, qos, retain)
 end
 
 return mqtt_client
