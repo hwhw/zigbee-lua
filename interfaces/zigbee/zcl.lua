@@ -270,7 +270,7 @@ msg{"Attribute",
   iftype("octstr16", arr{"Value", asstring=true, type=t_U8, counter=t_U16}),
   iftype("string16", arr{"Value", asstring=true, type=t_U8, counter=t_U16}),
   iftype("array", nil), -- not yet implemented
-  iftype("struct", nil), -- not yet implemented
+  iftype("struct", arr{"Members", counter=t_U16, msg{ref="Attribute"}}),
   iftype("set", nil), -- not yet implemented
   iftype("bag", nil), -- not yet implemented
   iftype("ToD", U32{"Value"}),
