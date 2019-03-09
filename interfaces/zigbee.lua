@@ -178,7 +178,7 @@ function zigbee:init()
             else
               seq_numbers[ieeeaddr] = data.TransactionSequenceNumber
               U.DEBUG(z, "parsed: %s", U.dump(data))
-              ctx:fire({"Zigbee", "ZCL", "from", dev.name or ieeeaddr}, {from = ieeeaddr, cluster = msg.clusterid, srcep = msg.srcendpoint, data = data})
+              ctx:fire({"Zigbee", "ZCL", "from", dev.name or ieeeaddr}, {from = ieeeaddr, cluster = msg.clusterid, srcep = msg.srcendpoint, linkquality = msg.linkquality, data = data})
             end
           else
             U.INFO(z, "error decoding ZCL message: %s", data)
