@@ -332,19 +332,38 @@ function any:on_aqara_report(cb)
     for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
       return msg and msg.cluster == 0
         and msg.data
-        and msg.data.ManufacturerCode==4447
+        -- not all Aqara devices claim the ZCL packet to be manufacturer specific, so we
+        -- cannot check this reliably:
+        --and msg.data.ManufacturerCode==4447
         and msg.data.GeneralCommandFrame
         and msg.data.GeneralCommandFrame.ReportAttributes
         and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports
         and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1]
         and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute
-        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].AttributeIdentifier==65281
-        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Type=="string"
-        and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value
+        and 
+        (( msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].AttributeIdentifier==65281
+          and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Type=="string"
+          and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value )
+        or ( msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].AttributeIdentifier==65282
+          and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Type=="struct"
+        ))
       end) do
-      local data = aqaracodec:decode({string.byte(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value,1,-1)})
-      if data then
-        U.DEBUG("Zigbee_any", "got Xiaomi/Aqara attributes: %s", U.dump(data))
+      if msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].AttributeIdentifier==65281 then
+        local data = aqaracodec:decode({string.byte(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value,1,-1)})
+        if data then
+          U.DEBUG("Zigbee_any", "got Xiaomi/Aqara attributes: %s", U.dump(data))
+          if cb then cb(data) end
+        else
+          U.DEBUG("Zigbee_any", "error parsing Aqara data:\n%s", U.hexdump(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value))
+        end
+      else
+        local old = msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Members
+          -- make a replica of the newer format
+        local data = {ReportAttributes = {}}
+        if old[2] then table.insert(data.ReportAttributes, {Attribute = old[2].Attribute, AttributeIdentifier = 1}) end
+        if old[3] then table.insert(data.ReportAttributes, {Attribute = old[3].Attribute, AttributeIdentifier = 4}) end
+        if old[4] then table.insert(data.ReportAttributes, {Attribute = old[4].Attribute, AttributeIdentifier = 6}) end
+        U.DEBUG("Zigbee_any", "got old style Xiaomi/Aqara attributes: %s", U.dump(data))
         if cb then cb(data) end
       end
     end
