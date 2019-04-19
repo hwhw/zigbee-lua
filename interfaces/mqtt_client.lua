@@ -19,9 +19,16 @@ function mqtt_client:init()
     end
     -- TODO: TLS setup
     self.client:connect(self.host, self.port, self.keepalive)
-    self.client:loop_start()
+    self.socketfd = self.client:socket()
+    ctx.srv:sock_server(self.socketfd, {
+      on_readable = function() self.client:loop_read(1) end,
+      on_error = function() --[[ TODO: error handling here? ]] end,
+    })
+    ctx.srv:register_before_wait(function()
+      if self.client:want_write() then self.client:loop_write() end
+    end)
     self.running = true
-    U.INFO("mqtt_client", "MQTT client connection established to %s:%s", self.host, self.port)
+    U.INFO("mqtt_client", "MQTT client connection established to %s:%s, monitoring socket %s", self.host, self.port, self.socketfd)
   end
   return self
 end

@@ -53,8 +53,16 @@ local poll = {
 			return f, a, r
 		end
 	end,
+  register_before_wait = function(this, cb)
+    this.before_wait = this.before_wait or {}
+    this.before_wait[cb] = cb
+  end,
+  unregister_before_wait = function(this, cb)
+    this.before_wait[cb] = nil
+  end,
   loop = function(this)
     while true do
+      for _, c in ipairs(this.before_wait or {}) do c(this) end
       U.DEBUG("srv", "waiting for epoll events")
       for i, ev in this:get(timeout) do
         U.DEBUG("srv", "got event on fd %d", ev.fd)
@@ -100,6 +108,10 @@ function srv:tcp_server(address, port, callbacks)
       until not a
     end
   })
+end
+
+function srv:sock_server(fd, event_callbacks)
+  self:add(fd, S.c.EPOLL.IN, event_callbacks)
 end
 
 function srv:char_reader(fd, char_reader)
