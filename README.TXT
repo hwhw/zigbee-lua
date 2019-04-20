@@ -84,19 +84,6 @@ Then:
   directory.
 
 
-Notes:
-------
-
-On some platforms (seen on aarch64, mips), there instabilities and bad memory
-accesses. This might be due to a bug (looking at you, external library
-interfaces) - or it might be due to LuaJIT not being up to the task on those
-platforms. The code of zigbee-lua uses coroutines *heavily*. This is something
-that a lot of Lua code does without and the maintenance of parallel state
-might be a less trodden path. If you are not in the mood to debug and fix
-these problems but want to get rid of them, try running LuaJIT with the
-"-j off" flag. Works for me.
-
-
 Similar projects:
 -----------------
 
