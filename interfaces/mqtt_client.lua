@@ -26,7 +26,9 @@ function mqtt_client:init()
     })
     ctx.srv:register_before_wait(function()
       if self.client:want_write() then self.client:loop_write() end
+      self.client:loop_misc()
     end)
+    ctx.srv:set_max_timeout(10000) -- needed to send keepalive packets timely
     self.running = true
     U.INFO("mqtt_client", "MQTT client connection established to %s:%s, monitoring socket %s", self.host, self.port, self.socketfd)
   end
