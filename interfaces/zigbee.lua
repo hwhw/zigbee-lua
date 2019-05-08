@@ -120,6 +120,7 @@ function zigbee:unknown_dev(nwkaddr)
   local ieeeaddr = self.ieeeaddrcache[nwkaddr]
   if not ieeeaddr then
     ieeeaddr = self.dongle:get_ieeeaddr(nwkaddr)
+    U.INFO(z, "got IEEE addr %s", ieeeaddr)
     self.ieeeaddrcache[nwkaddr] = ieeeaddr
   end
   if ieeeaddr then
@@ -143,8 +144,7 @@ function zigbee:init()
   end}
   -- provisioning for newly announced devices
   ctx.task{name="zigbee_announce_listener", function()
-    while true do
-      local ok, data = ctx:wait{"Zigbee", self.dongle, "device_announce"}
+    for ok, data in ctx:wait_all{"Zigbee", self.dongle, "device_announce"} do
       if not ok then return U.ERR(z, "error waiting for device announcements") end
       local dev = self.devices:ieee(data.ieeeaddr)
       if not dev then
@@ -161,12 +161,12 @@ function zigbee:init()
   -- handling of incoming data
   local seq_numbers = {} -- to weed out duplicate packets
   ctx.task{name="zigbee_rx_handler", function()
-    while true do
-      local ok, msg = ctx:wait{"Zigbee", self.dongle, "af_message"}
+    for ok, msg in ctx:wait_all{"Zigbee", self.dongle, "af_message"} do
       if not ok then
         U.ERR(z, "error waiting for AF message receive")
         -- TODO: reasoning whether to end task here
       else
+        U.INFO(z, "got AF message")
         local dev, ieeeaddr = self.devices:nwk(msg.src)
         if not dev then
           self:unknown_dev(msg.src)
@@ -190,8 +190,7 @@ function zigbee:init()
   -- handling of outgoing data
   ctx.task{name="zigbee_tx_handler", function()
     local fcodec = ZCL"Frame"
-    while true do
-      local ok, msg = ctx:wait{"Zigbee", "ZCL", "to"}
+    for ok, msg in ctx:wait_all{"Zigbee", "ZCL", "to"} do
       if not ok then
         U.ERR(z, "error waiting for AF message transmit")
       else
@@ -201,10 +200,12 @@ function zigbee:init()
           if not dev.eps then
             U.ERR(z, "no endpoint information for device %s", msg.dst)
           else
-            local dst_ep
-            for _, ep in ipairs(dev.eps) do
-              if U.contains(ep.InClusterList, {msg.cluster}) then
-                dst_ep = ep.Endpoint
+            local dst_ep = msg.dst_ep
+            if not dst_ep then
+              for _, ep in ipairs(dev.eps) do
+                if U.contains(ep.InClusterList, {msg.cluster}) then
+                  dst_ep = ep.Endpoint
+                end
               end
             end
             if not dst_ep then
@@ -214,16 +215,13 @@ function zigbee:init()
               if not ok then
                 U.ERR(z, "could not encode ZCL data, error: %s", frame)
               else
-                self.dongle:sreq("AF_DATA_REQUEST", {
-                  DstAddr = dev.nwkaddr,
-                  DstEndpoint = dst_ep,
-                  SrcEndpoint = 1, -- TODO: make this flexible
-                  ClusterId = msg.cluster,
-                  TransId = 1,
-                  Options = {},
-                  Radius = dev.defaultradius or 3,
-                  Data = frame
-                })
+                self.dongle:tx{
+                  dst = dev.nwkaddr,
+                  dst_ep = dst_ep,
+                  src_ep = 1, -- TODO: make this flexible?
+                  clusterid = msg.cluster,
+                  data = frame
+                }
               end
             end
           end
@@ -233,8 +231,7 @@ function zigbee:init()
   end}
   -- handling of device naming and suchlike
   ctx.task{name="zigbee_device_attribute", function()
-    while true do
-      local ok, msg = ctx:wait{"Zigbee", "device_attibute"}
+    for ok, msg in ctx:wait_all{"Zigbee", "device_attibute"} do
       if not ok then
         U.ERR(z, "error waiting for device_attribute message")
       else
@@ -250,8 +247,7 @@ function zigbee:init()
   end}
   -- handling of device naming and suchlike
   ctx.task{name="zigbee_device_db", function()
-    while true do
-      local ok, msg = ctx:wait{"Zigbee", "device_db"}
+    for ok, msg in ctx:wait_all{"Zigbee", "device_db"} do
       if not ok then
         U.ERR(z, "error waiting for device_attribute message")
       else

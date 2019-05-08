@@ -6,6 +6,7 @@ Supposed to run via LuaJIT (uses ffi, bitop)
 
 Supported Zigbee interfaces:
 * CC253x via ZNP
+* ETRX3 series
 
 Features:
 * start up a Zigbee coordinator
@@ -17,6 +18,7 @@ Features:
 
 Device related notes:
 * CC253x: testing is done using the CC253x firmware from zigbee2mqtt project
+* ETRX3: interfacing using the AT command set, tested with firmware R309
 
 Status: It's operational. You can use this to run a Zigbee coordinator and
 control its communication. Via the TCP interface, you can control its behaviour
@@ -48,6 +50,7 @@ Description of software structure:
   * The CC253x ZNP interface is in interfaces/zigbee/devices/dongle-cc253x.lua,
     the ZNP protocol definition (using codec.lua) can be found in
     interfaces/zigbee/cc-znp.lua
+  * The ETRX3 interface is in interfaces/zigbee/devices/dongle-etrx3.lua
 
 
 Usage:
@@ -64,11 +67,9 @@ use this software for other tasks, too.
     - git submodule init
     - git submodule update
 2. Prepare hardware
-  * At the moment, the CC253x devices (CC2531 USB stick, CC2530 via UART) are
-    the only supported hardware. Support for ETRX357 based devices (featuring
-    the AT-command firmware support) is planned.
   * CC253x: flash with appropriate firmware. See firmware remarks for a very
     subjective view on what you should use.
+  * ETRX3 based hardware: should already have firmware
 3. optional: configure USB serial interface permissions
    This might be your chance to look and see what udev is and can do for you
 4. edit/adapt config.lua

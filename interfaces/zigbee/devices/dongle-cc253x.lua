@@ -200,6 +200,19 @@ function dongle:init()
   return self
 end
 
+function dongle:tx(p)
+  return self:sreq("AF_DATA_REQUEST", {
+    DstAddr = p.dst,
+    DstEndpoint = p.dst_ep,
+    SrcEndpoint = p.src_ep,
+    ClusterId = p.clusterid,
+    TransId = 1,
+    Options = {},
+    Radius = dev.defaultradius or 3,
+    Data = p.data
+  })
+end
+
 function dongle:get_ieeeaddr(nwk)
   U.INFO(self.subsys, "looking up IEEEAddr for NWK addr %04x", nwk)
   local ok, res = self:sreq("UTIL_ADDRMGR_NWK_ADDR_LOOKUP", {NwkAddr=nwk})

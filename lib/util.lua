@@ -67,6 +67,11 @@ function util.reverse(t)
   for i=#t, 1, -1 do table.insert(n, t[i]) end
   return n
 end
+function util.hashify(t)
+  local n={}
+  for _, v in ipairs(t) do n[v] = true end
+  return n
+end
 function util.filter(f)
   return function(t)
     for k, v in pairs(f) do

@@ -22,15 +22,22 @@ return {
           -- network key defaults to zigbee2mqtt/zigbee-shepherd key, better change this!
           network_key = {1,3,5,7,9,11,13,15,0,2,4,6,8,10,12,13}
         },
+--[[ example for ETRX3 dongle:
+        device = {
+          class = "dongle-etrx3",
+          -- you need to start once with this setting set to true:
+          reset_conf = false,
+          port = "/dev/ttyUSB0",
+          baud = 115200,
+          pan_id = 0x1a64,
+          -- you can give an explicit ext pan id, otherwise the coordinator's IEEEaddr is used
+          ext_pan_id = "coordinator",
+          channel = 15,
+          -- network key defaults to zigbee2mqtt/zigbee-shepherd key, better change this!
+          network_key = {1,3,5,7,9,11,13,15,0,2,4,6,8,10,12,13}
+        },
+--]]
         device_database = "device_database.json"
-      }
-    },
-    mqtt_client = {
-      {
-        host = '127.0.0.1',
-        port = 1883,
-        --username = 'myusername',
-        --password = 'mypassw0rd',
       }
     }
   },
