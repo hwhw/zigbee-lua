@@ -305,6 +305,7 @@ end
 function ctx:wait(...) return self:currenttask():wait(...) end
 function ctx:wait_all(...) return self:currenttask():wait_all(...) end
 function ctx:sleep(...) return self:currenttask():sleep(...) end
+function ctx:parallel(...) return self:currenttask():parallel(...) end
 
 -- ctx.task is an instance so the __call metamethod works as
 -- intended

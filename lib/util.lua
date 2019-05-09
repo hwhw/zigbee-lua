@@ -109,6 +109,7 @@ function util.copy(t)
 end
 
 function util.hexdump(buffer)
+  if not (type(buffer)=="string" or type(buffer)=="table") then return tostring(buffer) end
   local p = 1
   local acc = {}
   local clear = ""
