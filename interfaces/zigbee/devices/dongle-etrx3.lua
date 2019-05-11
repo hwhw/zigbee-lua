@@ -207,7 +207,7 @@ function dongle:get_ieeeaddr(nwk)
   else
     U.INFO(self.subsys, "error retrieving IEEEAddr for NWK addr %04X", nwk)
   end
-  return ieeeaddr.IEEEAddrRemoteDev
+  return ieeeaddr and ieeeaddr.IEEEAddrRemoteDev
 end
 
 function dongle:get_node_descriptor(nwk)
