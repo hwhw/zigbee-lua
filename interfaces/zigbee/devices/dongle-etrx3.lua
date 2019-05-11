@@ -8,7 +8,7 @@ local zigbee = require"interfaces.zigbee"
 local APS=require"interfaces.zigbee.aps"
 
 local dongle = U.object:new{
-  subsys = "dongle-etrx357",
+  subsys = "dongle-etrx3",
   handler = {}
 }
 
@@ -146,10 +146,10 @@ function dongle:init()
         data.duration = data.duration or 0xFE
 
         for _, devaddr in ipairs(data.include) do
-          self:permit_joining(devaddr, 254, 1)
+          self:permit_joining(devaddr, data.duration, 1)
         end
         for _, devaddr in ipairs(data.exclude) do
-          self:permit_joining(devaddr, 0, 1)
+          self:permit_joining(devaddr, 0, 0)
         end
       end
     end
@@ -298,67 +298,59 @@ function dongle:provision_device(nwk)
 end
 
 function dongle:initialize_coordinator(reset_conf)
+  -- disable command echo:
   self:setup("124", "1")
 
   local ok, msg = self:command"ATI"
-  if ok then U.DEBUG(self.subsys, "Firmware info: %s", U.dump(msg)) end
-
-  self.password = self.password or "password"
-
-  if reset_conf and self.reset_conf then
-    self:command("AT&F", false, 2.0)
-    self.serial:set_baud(19200)
-    local baudrates = {
-      [1200] = 0,
-      [2400] = 1,
-      [4800] = 2,
-      [9600] = 3,
-      [14400] = 4,
-      [19200] = 5,
-      [28800] = 6,
-      [38400] = 7,
-      [50000] = 8,
-      [57600] = 9,
-      [76800] = 10,
-      [100000] = 11,
-      [115200] = 12
-    }
-    local baud_rate = self.baud or 19200
-    self:command(string.format("ATS12=%02X10", baudrates[baud_rate]), false, 2.0)
-    self.serial:set_baud(baud_rate)
-    local ok, msg = self:command"ATI"
-    
-    local channelmask = bit.lshift(1, self.channel-11)
-    self:setup("00", "%04X", channelmask)
-    if self.pan_id then self:setup("02", "%04X", self.pan_id) end
-    if self.eui64 then self:setup("04", self.eui64) end
-    local ok, msg = self:command("ATS04?", true)
-    self.eui64 = msg.data[1]
-    if self.ext_pan_id then
-      if self.ext_pan_id=="coordinator" then
-        self:setup("03", self.eui64)
-      else
-        self:setup("03", self.ext_pan_id)
-      end
-    end
-    if self.network_key then
-      self:setup("08", "%s:%s", U.tohex(self.network_key), self.password)
-    end
-    -- for now this is hardcoded for the HA profile:
-    self:setup("09", "%s:%s", "5A6967426565416C6C69616E63653039", self.password)
-    -- JPAN prompt may (or will?) arrive before OK result of enable command
-    local jpan_waiter = ctx.task{name="etrx_init_coord_wait", function()
-      local ok, msg = ctx:wait({"ETRX", self, "Prompt", "JPAN"}, nil, timeout or 10.0)
-      if not ok then error("network not established") end
-      local channel, pan_id, ext_pan_id = string.match(msg.data, "([^,]+),([^,]+),(.*)")
-      U.INFO(self.subsys, "module created PAN on channel %s with PAN id %s (ExtPAN id %s)", channel, pan_id, ext_pan_id)
-    end}
-    self:command("AT+EN", true, 10.0)
-    jpan_waiter:finish()
+  if ok then
+    U.DEBUG(self.subsys, "Firmware info: %s", U.dump(msg))
+  else
+    error(U.ERR(self.subsys, "Error getting firmware info"))
   end
 
-  local ok, msg = self:command("ATS04?", true)
-  self.eui64 = msg.data[1]
+  if self.factory_reset then
+    self:command("AT&F")
+    error(U.ERR(self.subsys, "Issued factory reset, now remove factory_reset from config"))
+  end
+
+  self.password = self.password or "password"
+  local ok, msg = self:command"AT+N"
+  if ok then
+    U.DEBUG(self.subsys, "Network info: %s", U.dump(msg))
+    if msg.data[1] == "+N=NoPAN" then
+      U.DEBUG(self.subsys, "No PAN currently configured, setting up coordinator")
+      local channelmask = bit.lshift(1, self.channel-11)
+      self:setup("00", "%04X", channelmask)
+      if self.pan_id then self:setup("02", "%04X", self.pan_id) end
+      if self.eui64 then self:setup("04", self.eui64) end
+      local ok, msg = self:command("ATS04?", true)
+      self.eui64 = msg.data[1]
+      if self.ext_pan_id then
+        if self.ext_pan_id=="coordinator" then
+          self:setup("03", self.eui64)
+        else
+          self:setup("03", self.ext_pan_id)
+        end
+      end
+      if self.network_key then
+        self:setup("08", "%s:%s", U.tohex(self.network_key), self.password)
+      end
+      -- for now this is hardcoded for the HA profile:
+      self:setup("09", "%s:%s", "5A6967426565416C6C69616E63653039", self.password)
+      -- JPAN prompt may (or will?) arrive before OK result of enable command
+      local jpan_waiter = ctx.task{name="etrx_init_coord_wait", function()
+        local ok, msg = ctx:wait({"ETRX", self, "Prompt", "JPAN"}, nil, timeout or 10.0)
+        if not ok then error("network not established") end
+        local channel, pan_id, ext_pan_id = string.match(msg.data, "([^,]+),([^,]+),(.*)")
+        U.INFO(self.subsys, "module created PAN on channel %s with PAN id %s (ExtPAN id %s)", channel, pan_id, ext_pan_id)
+      end}
+      self:command("AT+EN", true, 10.0)
+      jpan_waiter:finish()
+    end
+  else
+    error(U.ERR(self.subsys, "Error getting network info"))
+  end
+
   if self.power then self:setup("01", self.power) end
   local ok, msg = self:command("AT+N", true)
   local devtype, channel, power, pan_id, ext_pan_id = string.match(msg.data[1], "%+N=([^,]+),([^,]+),([^,]+),([^,]+),([^,]+)$")

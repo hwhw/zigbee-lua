@@ -25,11 +25,13 @@ return {
 --[[ example for ETRX3 dongle:
         device = {
           class = "dongle-etrx3",
-          -- you need to start once with this setting set to true:
-          reset_conf = false,
           port = "/dev/ttyUSB0",
-          baud = 115200,
-          pan_id = 0x1a64,
+          baud = 19200,
+          -- you can set this to true to factory reset the dongle:
+          factory_reset = false,
+          ----------------------
+          -- the following settings will only be applied if no network is yet configured in the dongle:
+          pan_id = 0x1a65, -- warning: the module will check if a PAN with this ID exists and will generate a random PAN ID if that is the case
           -- you can give an explicit ext pan id, otherwise the coordinator's IEEEaddr is used
           ext_pan_id = "coordinator",
           channel = 15,
