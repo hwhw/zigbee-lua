@@ -181,7 +181,7 @@ function dongle:init()
 
         for _, devaddr in ipairs(data.include) do
           local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
-          local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=data.duration,TCSignificance=0}))
+          local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=data.duration,TCSignificance=1}))
           if not ok then
             U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
           end
