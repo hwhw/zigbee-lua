@@ -140,7 +140,7 @@ function task:finish()
     local task = self:next(function(t, ...)
       ctx:fire(ev)
     end)
-    taskregistry[coroutine.running()]:wait({ev})
+    taskregistry[coroutine.running()]:wait(ev)
   end
   return unpack(self.result)
 end
