@@ -208,7 +208,7 @@ function dongle:tx(p)
     ClusterId = p.clusterid,
     TransId = 1,
     Options = {},
-    Radius = dev.defaultradius or 3,
+    Radius = self.defaultradius or 3,
     Data = p.data
   })
 end
