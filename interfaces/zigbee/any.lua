@@ -268,6 +268,15 @@ function any:check_level()
   return level and level[0]
 end
 
+function any:on_announce(cb)
+  ctx.task{name=string.format("%s/on_announce", self.id),function()
+    for ok, msg in ctx:wait_all{"Zigbee", "announce", self.id} do
+      U.DEBUG("Zigbee_any", "got announcement: %s", U.dump(msg))
+      cb()
+    end
+  end}
+end
+
 function any:on_button_press(cb)
   ctx.task{name=string.format("%s/on_button_press", self.id),function()
     for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)

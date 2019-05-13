@@ -155,6 +155,7 @@ function zigbee:init()
           dev.nwkaddr = data.nwkaddr
           self.devices:save()
         end
+        ctx:fire({"Zigbee", "announce", dev.name or data.ieeeaddr}, {from = data.ieeeaddr})
       end
     end
   end}
