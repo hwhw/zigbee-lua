@@ -67,6 +67,13 @@ function devdb:find(id)
   end
   return dev, ieeeaddr
 end
+function devdb:delete(id)
+  local dev, ieeeaddr = self:find(id)
+  if dev and ieeeaddr then
+    self.devs[ieeeaddr] = nil
+    return true
+  end
+end
 function devdb:names()
   local names = {}
   for _, d in pairs(self.devs) do
@@ -246,7 +253,7 @@ function zigbee:init()
       end
     end
   end}
-  -- handling of device naming and suchlike
+  -- handling of device database operations
   ctx.task{name="zigbee_device_db", function()
     for ok, msg in ctx:wait_all{"Zigbee", "device_db"} do
       if not ok then
@@ -261,6 +268,10 @@ function zigbee:init()
             self.devices:set(msg.newid, ndev)
           end
           self.devices:save()
+        elseif msg.cmd and msg.cmd=="delete" then
+          if msg.id and self.devices:delete(msg.id) then
+            self.devices:save()
+          end
         end
       end
     end
