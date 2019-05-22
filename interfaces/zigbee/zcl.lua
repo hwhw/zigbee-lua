@@ -104,6 +104,9 @@ msg{"Frame",
   clusterlocal(0x0300, "ColorControl"),
   --clusterlocal(0x0301, "BallastConfiguration"),
 
+
+  -- from the ZLL profile 0xc05e, see ZigBee Light Link Standard:
+  clusterlocal(0x1000, "ZLLCommissioning"),
 }
 
 map {"CommandIdentifier", register=true, type=t_U8, values={
@@ -1160,5 +1163,233 @@ msg{"StepColorTemperature",
 -- BALLAST CONFIGURATION CLUSTER
 
 msg{"BallastConfigurationClusterFrame"}
+
+-- ZLL COMMISSIONING CLUSTER
+msg{"ZLLCommissioningClusterFrame",
+  commandtoserver{
+    {"ScanRequest", 0x00, 0xFF},
+    {"DeviceInformationRequest", 0x02, 0xFF},
+    {"IdentifyRequest", 0x06, 0xFF},
+    {"ResetToFactoryNewRequest", 0x07, 0xFF},
+    {"NetworkStartRequest", 0x10, 0xFF},
+    {"NetworkJoinRouterRequest", 0x12, 0xFF},
+    {"NetworkJoinEndDeviceRequest", 0x14, 0xFF},
+    {"NetworkUpdateRequest", 0x16, 0xFF},
+
+    {"GetGroupIdentifiersRequest", 0x41, 0xFF},
+    {"GetEndpointListRequest", 0x42, 0xFF},
+  },
+  commandfromserver{
+    {"ScanResponse", 0x01, 0xFF},
+    {"DeviceInformationResponse", 0x03, 0xFF},
+    {"NetworkStartResponse", 0x11, 0xFF},
+    {"NetworkJoinRouterResponse", 0x13, 0xFF},
+    {"NetworkJoinEndDeviceResponse", 0x15, 0xFF},
+
+    {"EndpointInformation", 0x40, 0xFF},
+    {"GetGroupIdentifiersResponse", 0x41, 0xFF},
+    {"GetEndpointListResponse", 0x42, 0xFF},
+  },
+  cmdref"ScanRequest",
+  cmdref"DeviceInformationRequest",
+  cmdref"IdentifyRequest",
+  cmdref"ResetToFactoryNewRequest",
+  cmdref"NetworkStartRequest",
+  cmdref"NetworkJoinRouterRequest",
+  cmdref"NetworkJoinEndDeviceRequest",
+  cmdref"NetworkUpdateRequest",
+
+  cmdref"GetGroupIdentifiersRequest",
+  cmdref"GetEndpointListRequest",
+
+  cmdref"ScanResponse",
+  cmdref"DeviceInformationResponse",
+  cmdref"NetworkStartResponse",
+  cmdref"NetworkJoinRouterResponse",
+  cmdref"NetworkJoinEndDeviceResponse",
+
+  cmdref"EndpointInformation",
+  cmdref"GetGroupIdentifiersResponse",
+  cmdref"GetEndpointListRespone"
+}
+msg{"ScanRequest",
+  U32 {"InterPANTransactionIdentifier"},
+  map {"ZigBeeInformation", type=t_U8, values={
+    {"LogicalTypeCoordinator",  B"000", B"011"},
+    {"LogicalTypeRouter",       B"001", B"011"},
+    {"LogicalTypeEndDevice",    B"010", B"011"},
+    {"RxOnWhenIdle",            B"100", B"100"},
+  }},
+  map {"ZLLInformation", type=t_U8, values={
+    {"FactoryNew",              B"000001", B"000001"},
+    {"AddressAssignment",       B"000010", B"000010"},
+    {"LinkInitiator",           B"010000", B"010000"},
+  }},
+}
+msg{"ScanResponse",
+  U32 {"InterPANTransactionIdentifier"},
+  U8  {"RSSICorrection"},
+  map {"ZigBeeInformation", type=t_U8, values={
+    {"LogicalTypeCoordinator",  B"000", B"011"},
+    {"LogicalTypeRouter",       B"001", B"011"},
+    {"LogicalTypeEndDevice",    B"010", B"011"},
+    {"RxOnWhenIdle",            B"100", B"100"},
+  }},
+  map {"ZLLInformation", type=t_U8, values={
+    {"FactoryNew",              B"000001", B"000001"},
+    {"AddressAssignment",       B"000010", B"000010"},
+    {"TouchlinkInitiator",      B"010000", B"010000"},
+    {"TouchlinkPriorityRequest",B"100000", B"100000"},
+  }},
+  U16 {"KeyBitmask"},
+  U32 {"ResponseIdentifier"},
+  arr {"ExtendedPANIdentifier", type=t_U8, length=8, reverse=true, ashex=true},
+  U8  {"NetworkUpdateIdentifier"},
+  U8  {"LogicalChannel"},
+  U16 {"PANIdentifier"},
+  U16 {"NetworkAddress"},
+  U8  {"NumberOfSubDevices"},
+  U8  {"TotalGroupIdentifiers"},
+  opt {nil, when=function(v,_,ctx,r) return v.NumberOfSubDevices==1 end, msg{"SubDeviceInformation",
+    U8  {"EndpointIdentifier"},
+    U16 {"ProfileIdentifier"},
+    U16 {"DeviceIdentifier"},
+    U8  {"Version"},
+    U8  {"GroupIdentifierCount"}
+  }}
+}
+msg{"DeviceInformationRequest",
+  U32 {"InterPANTransactionIdentifier"},
+  U8  {"StartIndex", default=0}
+}
+msg{"DeviceInformationRecord",
+  arr {"IEEEAddress", type=t_U8, length=8, reverse=true, ashex=true},
+  U8  {"EndpointIdentifier"},
+  U8  {"EndpointIdentifier"},
+  U16 {"ProfileIdentifier"},
+  U16 {"DeviceIdentifier"},
+  U8  {"Version"},
+  U8  {"GroupIdentifierCount"},
+  U8  {"Sort"}
+}
+msg{"DeviceInformationResponse",
+  U32 {"InterPANTransactionIdentifier"},
+  U8  {"NumberOfSubDevices"},
+  U8  {"StartIndex"},
+  arr {"DeviceInformationRecordList", counter=t_U8, msg{ref="DeviceInformationRecord"}}
+}
+msg{"IdentifyRequest",
+  U32 {"InterPANTransactionIdentifier"},
+  U16 {"IdentifyDuration", default=10}
+}
+msg{"ResetToFactoryNewRequest",
+  U32 {"InterPANTransactionIdentifier"}
+}
+msg{"NetworkStartRequest",
+  U32 {"InterPANTransactionIdentifier"},
+  arr {"ExtendedPANIdentifier", type=t_U8, length=8, reverse=true, ashex=true},
+  U8  {"KeyIndex"},
+  arr {"EncryptedNetworkKey", type=t_U8, length=16},
+  U8  {"LogicalChannel"},
+  U16 {"PANIdentifier"},
+  U16 {"NetworkAddress"},
+  U16 {"GroupIdentifiersBegin"},
+  U16 {"GroupIdentifiersEnd"},
+  U16 {"FreeNetworkAddressRangeBegin"},
+  U16 {"FreeNetworkAddressRangeEnd"},
+  U16 {"FreeGroupIdentifierRangeBegin"},
+  U16 {"FreeGroupIdentifierRangeEnd"},
+  arr {"InitiatorIEEEAddress", type=t_U8, length=8, reverse=true, ashex=true},
+  U16 {"InitiatorNetworkAddress"}
+}
+msg{"NetworkStartResponse",
+  U32 {"InterPANTransactionIdentifier"},
+  U8  {"Status"},
+  arr {"ExtendedPANIdentifier", type=t_U8, length=8, reverse=true, ashex=true},
+  U8  {"NetworkUpdateIdentifier"},
+  U8  {"LogicalChannel"},
+  U16 {"PANIdentifier"}
+}
+msg{"NetworkJoinRouterRequest",
+  U32 {"InterPANTransactionIdentifier"},
+  arr {"ExtendedPANIdentifier", type=t_U8, length=8, reverse=true, ashex=true},
+  U8  {"KeyIndex"},
+  arr {"EncryptedNetworkKey", type=t_U8, length=16},
+  U8  {"NetworkUpdateIdentifier"},
+  U8  {"LogicalChannel"},
+  U16 {"PANIdentifier"},
+  U16 {"NetworkAddress"},
+  U16 {"GroupIdentifiersBegin"},
+  U16 {"GroupIdentifiersEnd"},
+  U16 {"FreeNetworkAddressRangeBegin"},
+  U16 {"FreeNetworkAddressRangeEnd"},
+  U16 {"FreeGroupIdentifierRangeBegin"},
+  U16 {"FreeGroupIdentifierRangeEnd"}
+}
+msg{"NetworkJoinRouterResponse",
+  U32 {"InterPANTransactionIdentifier"},
+  U8  {"Status"}
+}
+msg{"NetworkJoinEndDeviceRequest",
+  U32 {"InterPANTransactionIdentifier"},
+  arr {"ExtendedPANIdentifier", type=t_U8, length=8, reverse=true, ashex=true},
+  U8  {"KeyIndex"},
+  arr {"EncryptedNetworkKey", type=t_U8, length=16},
+  U8  {"NetworkUpdateIdentifier"},
+  U8  {"LogicalChannel"},
+  U16 {"PANIdentifier"},
+  U16 {"NetworkAddress"},
+  U16 {"GroupIdentifiersBegin"},
+  U16 {"GroupIdentifiersEnd"},
+  U16 {"FreeNetworkAddressRangeBegin"},
+  U16 {"FreeNetworkAddressRangeEnd"},
+  U16 {"FreeGroupIdentifierRangeBegin"},
+  U16 {"FreeGroupIdentifierRangeEnd"}
+}
+msg{"NetworkJoinEndDeviceResponse",
+  U32 {"InterPANTransactionIdentifier"},
+  U8  {"Status"}
+}
+msg{"NetworkUpdateRequest",
+  U32 {"InterPANTransactionIdentifier"},
+  arr {"ExtendedPANIdentifier", type=t_U8, length=8, reverse=true, ashex=true},
+  U8  {"NetworkUpdateIdentifier"},
+  U8  {"LogicalChannel"},
+  U16 {"PANIdentifier"},
+  U16 {"NetworkAddress"}
+}
+msg{"EndpointInformation",
+  arr {"IEEEAddress", type=t_U8, length=8, reverse=true, ashex=true},
+  U16 {"networkAddress"},
+  U8  {"EndpointIdentifier"},
+  U16 {"ProfileIdentifier"},
+  U16 {"DeviceIdentifier"},
+  U8  {"Version"}
+}
+msg{"GetGroupIdentifiersRequest",
+  U8  {"StartIndex"}
+}
+msg{"GroupInformationRecord",
+  U16 {"GroupIdentifier"},
+  U8  {"GroupType"}
+}
+msg{"GetGroupIdentifiersResponse",
+  U8  {"Total"},
+  U8  {"StartIndex"},
+  arr {"GroupInformationRecordList", counter=t_U8, msg{ref="GroupInformationRecord"}}
+}
+msg{"EndpointInformationRecord",
+  U16 {"NetworkAddress"},
+  U8  {"EndpointIdentifier"},
+  U16 {"ProfileIdentifier"},
+  U16 {"DeviceIdentifier"},
+  U8  {"Version"}
+}
+msg{"GetEndpointListRequest",
+  U8  {"StartIndex"},
+  U8  {"Total"},
+  U8  {"StartIndex"},
+  arr {"EndpointList", counter=t_U8, msg{ref="EndpointInformationRecord"}}
+}
 
 end)

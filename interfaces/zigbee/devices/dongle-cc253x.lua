@@ -54,11 +54,11 @@ function dongle:areq(areqname, data)
   self:sendpackage(ccznp:encode{Cmd=req,[req]=(data or {})})
 end
 
-function dongle:sreq(sreqname, data, timeout)
+function dongle:sreq(sreqname, data, timeout, srspname)
   U.DEBUG({self.subsys,"sreq"}, "sending SREQ %s, data: %s", sreqname, U.dump(data))
-  local sreq, srsp = "SREQ_"..sreqname, "SRSP_"..sreqname
+  local sreq, srsp = "SREQ_"..sreqname, "SRSP_"..(srspname or sreqname)
   self:sendpackage(ccznp:encode{Cmd=sreq,[sreq]=(data or {})})
-  return ctx:wait({"CC-ZNP-MT", self, "SRSP_"..sreqname}, nil, timeout or 5.0)
+  return ctx:wait({"CC-ZNP-MT", self, srsp}, nil, timeout or 5.0)
 end
 
 function dongle:init()
@@ -145,24 +145,37 @@ function dongle:init()
     end
   end}
 
+  local function incoming_msg(msg)
+    local profile = false
+    if msg.DstEndpoint == 1 then
+      profile = 0x104
+    elseif msg.DstEndpoint == 2 then
+      profile = 0xc05e
+    end
+    if profile then
+      ctx:fire({"Zigbee", self, "af_message"}, {
+        data = msg.Data,
+        src = msg.SrcAddr,
+        src_pan_id = msg.SrcPanId,
+        clusterid = msg.ClusterId,
+        groupid = msg.GroupId,
+        localendpoint = msg.DstEndpoint,
+        srcendpoint = msg.SrcEndpoint,
+        profile = profile,
+        linkquality = msg.LinkQuality
+      })
+    end
+  end
   self.on_af_incoming_msg = ctx.task{name="cc253x_incoming_message", function()
     for _, msg in ctx:wait_all{"CC-ZNP-MT", self, "AREQ_AF_INCOMING_MSG"} do
       U.INFO(self.subsys.."/af", "incoming message from 0x%04x, clusterid 0x%04x, dst EP %d", msg.SrcAddr, msg.ClusterId, msg.DstEndpoint)
-      local profile = false
-      if msg.DstEndpoint == 1 then
-        profile = 0x104
-      end
-      if profile then
-        ctx:fire({"Zigbee", self, "af_message"}, {
-          data = msg.Data,
-          src = msg.SrcAddr,
-          clusterid = msg.ClusterId,
-          localendpoint = msg.DstEndpoint,
-          srcendpoint = msg.SrcEndpoint,
-          profile = profile,
-          linkquality = msg.LinkQuality
-        })
-      end
+      incoming_msg(msg)
+    end
+  end}
+  self.on_af_incoming_msg = ctx.task{name="cc253x_incoming_message_ext", function()
+    for _, msg in ctx:wait_all{"CC-ZNP-MT", self, "AREQ_AF_INCOMING_MSG_EXT"} do
+      U.INFO(self.subsys.."/af", "incoming message from %s, clusterid 0x%04x, dst EP %d", msg.SrcAddr, msg.ClusterId, msg.DstEndpoint)
+      incoming_msg(msg)
     end
   end}
 
@@ -200,17 +213,51 @@ function dongle:init()
   return self
 end
 
+local function mk64bitaddr(addr)
+  if type(addr)=="number" then
+    addr = string.format("000000000000%04X", addr)
+  end
+  return addr
+end
+
 function dongle:tx(p)
-  return self:sreq("AF_DATA_REQUEST", {
-    DstAddr = p.dst,
-    DstEndpoint = p.dst_ep,
-    SrcEndpoint = p.src_ep,
-    ClusterId = p.clusterid,
-    TransId = 1,
-    Options = {},
-    Radius = self.defaultradius or 3,
-    Data = p.data
-  })
+  if p.interpan then
+    p.src_ep = 2
+    if p.channel and p.channel ~= self.channel then
+      local ok, ret = check_ok(self:sreq("AF_INTER_PAN_CTL_InterPanSet", {Channel=p.channel}, 5.0, "AF_INTER_PAN_CTL"))
+      if not ok then
+        return ok, ret
+      end
+    end
+  end
+  local options = {}
+  if p.skip_routing then table.insert(options, "SkipRouting") end
+  if p.request_ack then table.insert(options, "APSACK") end
+  if p.broadcast or p.groupcast or type(p.dst)=="string" then
+    return self:sreq("AF_DATA_REQUEST_EXT", {
+      DstAddrMode = p.broadcast and "AddrBroadcast" or p.groupcast and "AddrGroup" or type(p.dst)=="string" and "Addr64Bit" or "Addr16Bit",
+      DstAddr = mk64bitaddr(p.dst),
+      DstEndpoint = p.dst_ep,
+      DstPanId = p.dst_pan_id or 0,
+      SrcEndpoint = p.src_ep,
+      ClusterId = p.clusterid,
+      TransId = 1,
+      Options = options,
+      Radius = self.defaultradius or 3,
+      Data = p.data
+    })
+  else
+    return self:sreq("AF_DATA_REQUEST", {
+      DstAddr = p.dst,
+      DstEndpoint = p.dst_ep,
+      SrcEndpoint = p.src_ep,
+      ClusterId = p.clusterid,
+      TransId = 1,
+      Options = options,
+      Radius = self.defaultradius or 3,
+      Data = p.data
+    })
+  end
 end
 
 function dongle:get_ieeeaddr(nwk)
@@ -382,7 +429,12 @@ function dongle:initialize_coordinator(reset_conf)
     or not check_ok(self:sreq("ZDO_STARTUP_FROM_APP",nil,30))
     -- does this make any sense?:
     or not check_ok(self:sreq("ZDO_END_DEVICE_ANNCE", {NwkAddr=0, IEEEAddr=extaddr, Capabilities={"ZigbeeRouter","MainPowered","ReceiverOnWhenIdle","AllocateShortAddress"}}))
+    -- standard HA profile endpoint:
     or not check_ok(self:sreq("AF_REGISTER", {EndPoint=1, AppProfId=0x104, AppDeviceId=5, AddDevVer=0, LatencyReq={"NoLatency"}, AppInClusterList={6}, AppOutClusterList={6}}))
+    -- endpoint for ZLL commissioning:
+    or not check_ok(self:sreq("AF_REGISTER", {EndPoint=2, AppProfId=0xc05e, AppDeviceId=0x0840, AddDevVer=0, LatencyReq={"NoLatency"}, AppInClusterList={0x1000}, AppOutClusterList={0x1000}}))
+    -- setup for ZLL commissioning endpoint as an InterPAN endpoint:
+    or not check_ok(self:sreq("AF_INTER_PAN_CTL_InterPanReg", {Endpoint=2}, 5.0, "AF_INTER_PAN_CTL"))
   then
     return U.ERR(self.subsys, "error initializing")
   end

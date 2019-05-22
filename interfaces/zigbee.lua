@@ -137,8 +137,82 @@ function zigbee:unknown_dev(nwkaddr)
   end
 end
 
+function zigbee:get_txseq()
+  local txseq = ((self.txseq or 0) + 1) % 256
+  self.txseq = txseq
+  return txseq
+end
+function zigbee:zll_commissioning_send(command, data, channel, target, req_ack)
+  local frame = ZCL"Frame":encode({
+    FrameControl = { "FrameTypeLocal", "DirectionToServer", "DisableDefaultResponse" },
+    TransactionSequenceNumber = self:get_txseq(),
+    ZLLCommissioningClusterFrame={
+      CommandIdentifier=command,
+      [command] = data
+    }
+  }, {ClusterId=0x1000})
+
+  return self.dongle:tx{
+    dst_pan_id = 0xFFFF,
+    dst = target or 0xFFFF,
+    dst_ep = 0xFE,
+    skip_routing = true,
+    interpan = true,
+    channel = channel or 11,
+    broadcast = not target,
+    request_ack = req_ack,
+    clusterid = 0x1000,
+    data = frame
+  }
+end
+function zigbee:touchlink(method)
+  method = method or "identify"
+  local learn = self.learn_devices
+  self.learn_devices = false
+  local transaction_identifier = math.random(0,0xFFFFFFFF)
+  local scan_request={
+    InterPANTransactionIdentifier=transaction_identifier,
+    ZigBeeInformation={"LogicalTypeRouter", "RxOnWhenIdle"},
+    ZLLInformation={}
+  }
+  local scan_channels = {
+    11,11,11,11,11,
+    15,20,25,
+    12,13,14,16,17,18,19,21,22,23,24,26 }
+  --[[
+  local scan_channels={11}
+  --]]
+  for try=1,#scan_channels do
+    local channel = scan_channels[try]
+    self:zll_commissioning_send("ScanRequest", scan_request, channel)
+    local ok, msg = ctx:wait({"Zigbee", "ZCL", "from"}, function(msg)
+      return msg.cluster == 0x1000 and
+        type(msg.data) == "table" and
+        msg.data.ZLLCommissioningClusterFrame and
+        msg.data.ZLLCommissioningClusterFrame.ScanResponse and
+        msg.data.ZLLCommissioningClusterFrame.ScanResponse.InterPANTransactionIdentifier == transaction_identifier
+    end, 0.25)
+    if ok then
+      U.INFO(z, "got a ScanResponse from device %s", msg.from)
+      if method == "identify" then
+        local request = {
+          InterPANTransactionIdentifier=transaction_identifier,
+          IdentifyDuration = 5
+        }
+        self:zll_commissioning_send("IdentifyRequest", request, channel, msg.from)
+      elseif method == "factory_reset" then
+        local request = { InterPANTransactionIdentifier=transaction_identifier }
+        self:zll_commissioning_send("ResetToFactoryNewRequest", request, channel, msg.from)
+      end
+      break
+    end
+  end
+  self.learn_devices = learn
+end
+
 function zigbee:init()
   self.devices = devdb:open(self.device_database)
+  self.learn_devices = true
   self.ieeeaddrcache = {}
   self.dongle = require("interfaces.zigbee.devices."..self.device.class):new(self.device):init()
 
@@ -175,10 +249,16 @@ function zigbee:init()
         -- TODO: reasoning whether to end task here
       else
         U.INFO(z, "got AF message")
-        local dev, ieeeaddr = self.devices:nwk(msg.src)
-        if not dev then
-          self:unknown_dev(msg.src)
-        else
+        local ieeeaddr
+        if type(msg.src) == "number" and self.learn_devices then
+          dev, ieeeaddr = self.devices:nwk(msg.src)
+          if not dev then
+            self:unknown_dev(msg.src)
+          end
+        elseif type(msg.src) == "string" then
+          ieeeaddr = msg.src
+        end
+        if ieeeaddr then
           local ok, data = ZCL"Frame":safe_decode(msg.data,{ClusterId=msg.clusterid})
           if ok then
             if seq_numbers[ieeeaddr] and seq_numbers[ieeeaddr] == data.TransactionSequenceNumber then
@@ -186,7 +266,7 @@ function zigbee:init()
             else
               seq_numbers[ieeeaddr] = data.TransactionSequenceNumber
               U.DEBUG(z, "parsed: %s", U.dump(data))
-              ctx:fire({"Zigbee", "ZCL", "from", dev.name or ieeeaddr}, {from = ieeeaddr, cluster = msg.clusterid, srcep = msg.srcendpoint, linkquality = msg.linkquality, data = data})
+              ctx:fire({"Zigbee", "ZCL", "from", (type(dev) == "table") and dev.name or ieeeaddr}, {from = ieeeaddr, cluster = msg.clusterid, srcep = msg.srcendpoint, linkquality = msg.linkquality, data = data})
             end
           else
             U.INFO(z, "error decoding ZCL message: %s", data)
