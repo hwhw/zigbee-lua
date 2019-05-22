@@ -70,6 +70,8 @@ msg{"Frame",
   
   -- Network Management Client
   -- ...
+  clusterlocal(0x0031, "Mgmt_Lqi_req"),
+  clusterlocal(0x0032, "Mgmt_Rtg_req"),
   clusterlocal(0x0036, "Mgmt_Permit_Joining_req"),
   -- ...
 
@@ -99,6 +101,8 @@ msg{"Frame",
   
   -- Network Management Server
   -- ...
+  clusterlocal(0x8031, "Mgmt_Lqi_rsp"),
+  clusterlocal(0x8032, "Mgmt_Rtg_rsp"),
   clusterlocal(0x8036, "Mgmt_Permit_Joining_rsp"),
   -- ...
 }
@@ -133,6 +137,14 @@ msg{"Active_EP_req",
 }
 
 -- ...
+
+msg{"Mgmt_Lqi_req",
+  U8  {"StartIndex"}
+}
+
+msg{"Mgmt_Rtg_req",
+  U8  {"StartIndex"}
+}
 
 msg{"Mgmt_Permit_Joining_req",
   U8  {"PermitDuration"},
@@ -247,6 +259,62 @@ msg{"Active_EP_rsp",
 }
 
 -- ...
+
+msg{"NeighborTableListRecord",
+  arr {"ExtendedPANId", type=t_U8, length=8, reverse=true, ashex=true},
+  arr {"ExtendedAddress", type=t_U8, length=8, reverse=true, ashex=true},
+  U16 {"NetworkAddress"},
+  map {"Info1", type=t_U8, values={
+    {"DeviceTypeZigBeeCoordinator",     B"00000000", B"00000011"},
+    {"DeviceTypeZigBeeRouter",          B"00000001", B"00000011"},
+    {"DeviceTypeZigBeeEndDevice",       B"00000010", B"00000011"},
+    {"DeviceTypeUnknown",               B"00000011", B"00000011"},
+    {"ReceiverOffWhenIdle",             B"00000000", B"00001100"},
+    {"ReceiverOnWhenIdle",              B"00000100", B"00001100"},
+    {"ReceiverWhenIdleUnknown",         B"00001000", B"00001100"},
+    {"RelationshipIsParent",            B"00000000", B"01110000"},
+    {"RelationshipIsChild",             B"00010000", B"01110000"},
+    {"RelationshipIsSibling",           B"00100000", B"01110000"},
+    {"RelationshipNone",                B"00110000", B"01110000"},
+    {"RelationshipPreviousChild",       B"01000000", B"01110000"},
+  }},
+  map {"Info2", type=t_U8, values={
+    {"NotAcceptingJoinRequests",        B"00000000", B"00000011"},
+    {"AcceptingJoinRequests",           B"00000001", B"00000011"},
+    {"JoinRequestHandlingUnknown",      B"00000010", B"00000011"},
+  }},
+  U8  {"Depth"},
+  U8  {"LQI"}
+}
+  
+msg{"Mgmt_Lqi_rsp",
+  map {ref="Status"},
+  U8  {"NeighborTableEntries"},
+  U8  {"StartIndex"},
+  arr {"NeighborTableList", counter=t_U8, msg{ref="NeighborTableListRecord"}}
+}
+
+msg{"RoutingTableListRecord",
+  U16 {"DestinationAddress"},
+  map {"RouteStatus", type=t_U8, values={
+    {"StatusActive",              B"00000000", B"00000111"},
+    {"StatusDiscoveryUnderway",   B"00000001", B"00000111"},
+    {"StatusDiscoveryFailed",     B"00000010", B"00000111"},
+    {"StatusInactive",            B"00000011", B"00000111"},
+    {"StatusValidationUnderway",  B"00000100", B"00000111"},
+    {"MemoryConstrained",         B"00001000", B"00001000"},
+    {"ManyToOne",                 B"00010000", B"00010000"},
+    {"RouteRecordRequired",       B"00100000", B"00100000"}
+  }},
+  U16 {"NextHopAddress"}
+}
+
+msg{"Mgmt_Rtg_rsp",
+  map {ref="Status"},
+  U8  {"RoutingTableEntries"},
+  U8  {"StartIndex"},
+  arr {"RoutingTableList", counter=t_U8, msg{ref="RoutingTableListRecord"}}
+}
 
 msg{"Mgmt_Permit_Joining_rsp",
   map {ref="Status"}
