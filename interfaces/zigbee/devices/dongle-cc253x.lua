@@ -246,6 +246,18 @@ function dongle:tx(p)
       Radius = self.defaultradius or 3,
       Data = p.data
     })
+  elseif p.source_route then
+    return self:sreq("AF_DATA_REQUEST_SRC_RTG", {
+      DstAddr = p.dst,
+      DstEndpoint = p.dst_ep,
+      SrcEndpoint = p.src_ep,
+      ClusterId = p.clusterid,
+      TransId = 1,
+      Options = options,
+      Radius = self.defaultradius or 3,
+      RelayList = p.source_route,
+      Data = p.data
+    })
   else
     return self:sreq("AF_DATA_REQUEST", {
       DstAddr = p.dst,

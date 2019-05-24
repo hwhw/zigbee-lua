@@ -303,8 +303,22 @@ function zigbee:init()
               if not ok then
                 U.ERR(z, "could not encode ZCL data, error: %s", frame)
               else
+                local source_route
+                if dev.source_route then
+                  source_route = {}
+                  for _, d in ipairs(dev.source_route) do
+                    local route_dev = self.devices:find(d)
+                    if not route_dev then
+                      source_route = nil
+                      break
+                    end
+                    U.DEBUG(z, "source routing via %04X (%s)", route_dev.nwkaddr, route_dev.name)
+                    table.insert(source_route, route_dev.nwkaddr)
+                  end
+                end
                 self.dongle:tx{
                   dst = dev.nwkaddr,
+                  source_route = source_route,
                   dst_ep = dst_ep,
                   src_ep = 1, -- TODO: make this flexible?
                   clusterid = msg.cluster,
