@@ -14,7 +14,7 @@ local function nilf() return nil end
 local poll = {
   new = function(this)
     local epollsrv = {
-      timeout = timeout,
+      default_timeout = timeout,
       fd = U.assert(S.epoll_create()),
       fds = {}
     }
@@ -62,11 +62,12 @@ local poll = {
     this.before_wait[cb] = nil
   end,
   set_max_timeout = function(this, max_timeout)
-    this.timeout = math.min(timeout, max_timeout)
+    this.timeout = math.min(this.timeout, max_timeout)
     U.DEBUG('srv', "timeout: %s, %s", max_timeout, this.timeout)
   end,
   loop = function(this)
     while true do
+      this.timeout = this.default_timeout
       for _, c in pairs(this.before_wait or {}) do c(this) end
       U.DEBUG("srv", "waiting for epoll events")
       for i, ev in this:get(this.timeout) do
