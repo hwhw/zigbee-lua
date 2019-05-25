@@ -233,13 +233,26 @@ end
    ctemp_min,
    ctemp_max
 ]]
+local current_mode = {
+  [0] = "h_s",
+  [1] = "x_y",
+  [2] = "ctemp",
+  [3] = "eh_s"
+}
 function any:check_colors()
   local colors = self:get_attributes(0x0300, {0,1,7,8,0x4000,0x4001,0x400a,0x400b,0x400c}, 20) or {}
   if not colors[0x400a] or not colors[8] then return end
+  local capabilites = {
+    hue_sat = colors[0x400a][0],
+    enhanced_hue = colors[0x400a][1],
+    color_loop = colors[0x400a][2],
+    x_y = colors[0x400a][3],
+    ctemp = colors[0x400a][4]
+  }
   return {
-    capabilities = colors[0x400a],
-    current_e = colors[0x4001],
-    current = colors[8],
+    capabilities = capabilities,
+    current_e = current_mode[colors[0x4001] or -1],
+    current = current_mode[colors[8] or -1],
     h = colors[0],
     s = colors[1],
     eh = colors[0x4000],
