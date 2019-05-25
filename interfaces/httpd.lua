@@ -69,18 +69,19 @@ local unparsed_marker = ffi.cast("void*", 1)
 local response = {}
 local function send_response(connection, msg)
   if type(msg) == "string" then msg = {data = msg} end
-  if type(msg) == "table" then
-    msg.code = msg.code or 200
-    msg.headers = msg.headers or {}
-    msg.headers["Content-Type"] = msg.headers["Content-Type"] or "text/html"
-    local r = M.MHD_create_response_from_buffer(#msg.data, ffi.cast("uint8_t*", msg.data), M.MHD_RESPMEM_MUST_COPY);
-    for key, value in pairs(msg.headers) do
-      M.MHD_add_response_header(r, tostring(key), tostring(value))
-    end
-    M.MHD_queue_response(connection, msg.code, r)
-    M.MHD_queue_response(connection, msg.code, r)
-    M.MHD_destroy_response(r)
+  if type(msg) ~= "table" then
+    msg = { code = 500, data = "Internal Server Error" }
   end
+  msg.code = msg.code or 200
+  msg.headers = msg.headers or {}
+  msg.headers["Content-Type"] = msg.headers["Content-Type"] or "text/html"
+  local r = M.MHD_create_response_from_buffer(#msg.data, ffi.cast("uint8_t*", msg.data), M.MHD_RESPMEM_MUST_COPY);
+  for key, value in pairs(msg.headers) do
+    M.MHD_add_response_header(r, tostring(key), tostring(value))
+  end
+  M.MHD_queue_response(connection, msg.code, r)
+  M.MHD_queue_response(connection, msg.code, r)
+  M.MHD_destroy_response(r)
 end
 function httpd:add_handler(method_match, url_match, callback)
   self.handler[callback] = {
@@ -164,14 +165,14 @@ function httpd:add_handler(method_match, url_match, callback)
         has_completed = true
         if not ok then
           U.ERR({"httpd","requesthandler"}, "error while handling request: %s", tostring(msg))
-          msg = { code = 500, data = "Internal Server Error" }
+          msg = false
         end
         if is_suspended then
           response[conn_id] = msg
           U.DEBUG("httpd", "resume %s", connection)
           M.MHD_resume_connection(connection)
         else
-          send_response(msg)
+          send_response(connection, msg)
         end
       end}
       if not has_completed then
