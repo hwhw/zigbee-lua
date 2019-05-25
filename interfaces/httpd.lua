@@ -165,7 +165,7 @@ function httpd:add_handler(method_match, url_match, callback)
         has_completed = true
         if not ok then
           U.ERR({"httpd","requesthandler"}, "error while handling request: %s", tostring(msg))
-          msg = false
+          msg = 0
         end
         if is_suspended then
           response[conn_id] = msg
