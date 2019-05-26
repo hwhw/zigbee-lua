@@ -3,7 +3,7 @@ local U = require"lib.util"
 local json = require"lib.json-lua.json"
 
 local z = "Zigbee"
-local ZCL=require"interfaces.zigbee.zcl"
+local ZCL=require"interfaces.zigbee.proto-zcl"
 local zigbee = U.object:new{
   ev = {},
   ZCL = ZCL,
@@ -76,8 +76,12 @@ function devdb:delete(id)
 end
 function devdb:names()
   local names = {}
-  for _, d in pairs(self.devs) do
-    if d.name then table.insert(names, d.name) end
+  for ieeeaddr, d in pairs(self.devs) do
+    if d.name then
+      table.insert(names, d.name)
+    else
+      table.insert(names, ieeeaddr)
+    end
   end
   return names
 end
