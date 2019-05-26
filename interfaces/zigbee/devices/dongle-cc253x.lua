@@ -220,7 +220,9 @@ local function mk64bitaddr(addr)
   return addr
 end
 
-function dongle:tx(p)
+function dongle:tx(p, waitconfirm)
+  local trans_id = (self.trans_id or 0) + 1
+  self.trans_id = trans_id
   if p.interpan then
     p.src_ep = 2
     if p.channel and p.channel ~= self.channel then
@@ -231,51 +233,60 @@ function dongle:tx(p)
     end
   end
   local options = {}
+  local ok = false
   if p.skip_routing then table.insert(options, "SkipRouting") end
   if p.request_ack then table.insert(options, "APSACK") end
   if p.broadcast or p.groupcast or type(p.dst)=="string" then
-    return self:sreq("AF_DATA_REQUEST_EXT", {
+    ok = self:sreq("AF_DATA_REQUEST_EXT", {
       DstAddrMode = p.broadcast and "AddrBroadcast" or p.groupcast and "AddrGroup" or type(p.dst)=="string" and "Addr64Bit" or "Addr16Bit",
       DstAddr = mk64bitaddr(p.dst),
       DstEndpoint = p.dst_ep,
       DstPanId = p.dst_pan_id or 0,
       SrcEndpoint = p.src_ep,
       ClusterId = p.clusterid,
-      TransId = 1,
+      TransId = trans_id,
       Options = options,
       Radius = self.defaultradius or 3,
       Data = p.data
     })
   elseif p.source_route then
-    return self:sreq("AF_DATA_REQUEST_SRC_RTG", {
+    ok = self:sreq("AF_DATA_REQUEST_SRC_RTG", {
       DstAddr = p.dst,
       DstEndpoint = p.dst_ep,
       SrcEndpoint = p.src_ep,
       ClusterId = p.clusterid,
-      TransId = 1,
+      TransId = trans_id,
       Options = options,
       Radius = self.defaultradius or 3,
       RelayList = p.source_route,
       Data = p.data
     })
   else
-    return self:sreq("AF_DATA_REQUEST", {
+    ok = self:sreq("AF_DATA_REQUEST", {
       DstAddr = p.dst,
       DstEndpoint = p.dst_ep,
       SrcEndpoint = p.src_ep,
       ClusterId = p.clusterid,
-      TransId = 1,
+      TransId = trans_id,
       Options = options,
       Radius = self.defaultradius or 3,
       Data = p.data
     })
   end
+  if ok and waitconfirm then
+    local msg
+    ok, msg = ctx:wait({"CC-ZNP-MT", self, "AREQ_AF_DATA_CONFIRM"}, function(msg) return msg.TransId == trans_id end, waitconfirm)
+    if ok then
+      ok = (msg.Status == 0)
+    end
+  end
+  return ok
 end
 
 function dongle:get_ieeeaddr(nwk)
   U.INFO(self.subsys, "looking up IEEEAddr for NWK addr %04x", nwk)
   local ok, res = self:sreq("UTIL_ADDRMGR_NWK_ADDR_LOOKUP", {NwkAddr=nwk})
-  if ok then return res.ExtAddr end
+  if ok and res.ExtAddr ~= "0000000000000000" then return res.ExtAddr end
 end
 
 function dongle:provision_device(nwk)

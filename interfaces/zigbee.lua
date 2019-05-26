@@ -4,38 +4,112 @@ local json = require"lib.json-lua.json"
 
 local z = "Zigbee"
 local ZCL=require"interfaces.zigbee.proto-zcl"
-local zigbee = U.object:new{
-  ev = {},
-  ZCL = ZCL,
-  dongle = nil,
-  ieeeaddrcache = {}
-}
 
+-----------------------------------------------------------------------------
+-- Zigbee device "object":
+-----------------------------------------------------------------------------
+local device_mt = {}
+-- handling of outgoing data
+local fcodec = ZCL"Frame"
+function device_mt:tx_zcl(msg)
+  U.DEBUG(z, "sending ZCL message to device %s, cluster %04x: %s", self.ieeeaddr, msg.cluster, U.dump(msg.data))
+  local dst_ep = msg.dst_ep
+  if not dst_ep and self.eps then
+    for _, ep in ipairs(self.eps) do
+      if U.contains(ep.InClusterList, {msg.cluster}) then
+        dst_ep = ep.Endpoint
+      end
+    end
+  end
+  if not dst_ep then
+    U.ERR(z, "no known endpoint on device %s for cluster %04x", msg.dst, msg.cluster)
+  else
+    local ok, frame = xpcall(fcodec.encode, debug.traceback, fcodec, msg.data, {ClusterId = msg.cluster})
+    if not ok then
+      U.ERR(z, "could not encode ZCL data, error: %s", frame)
+    else
+      local source_route
+      if self.source_route then
+        source_route = {}
+        for _, d in ipairs(self.source_route) do
+          local route_dev = self.interface.devices:find(d)
+          if not route_dev then
+            source_route = nil
+            break
+          end
+          U.DEBUG(z, "source routing via %04X (%s)", route_dev.nwkaddr, route_dev.name)
+          table.insert(source_route, route_dev.nwkaddr)
+        end
+      end
+      local ok = self.interface.dongle:tx({
+        dst = self.nwkaddr,
+        source_route = source_route,
+        dst_ep = dst_ep,
+        src_ep = 1, -- TODO: make this flexible?
+        clusterid = msg.cluster,
+        data = frame
+      }, msg.timeout or 2.0)
+      return ok
+    end
+  end
+  return false
+end
+
+-----------------------------------------------------------------------------
+-- Zigbee device database "object":
+-----------------------------------------------------------------------------
 local devdb = U.object:new()
-function devdb:open(filename)
-  local file, err = io.open(filename, "r")
+local zcl_interface = require"interfaces.zigbee.zcl"
+
+function devdb:insert(ieeeaddr, data)
+  if type(data) == "table" then
+    local dev = setmetatable(data, {__index=device_mt})
+    dev.db = self
+    dev.interface = self.interface
+    dev.ieeeaddr = ieeeaddr
+    dev.zcl = zcl_interface:new{device=dev}
+    dev.zcl_ep = {}
+    if dev.eps then
+      for k, v in ipairs(dev.eps) do
+        dev.zcl_ep[k] = zcl_interface:new{device=dev, ep=v.Endpoint}
+      end
+    end
+    self.devs[ieeeaddr] = dev
+  end
+end
+function devdb:open()
+  self.devs={}
+  local file, err = io.open(self.filename, "r")
   if not file then
-    U.ERR(z, "cannot open database file %s, error: %s", filename, err)
-    return self:new{devs={}, filename=filename}
+    U.ERR(z, "cannot open database file %s, error: %s - trying to start with an empty one", self.filename, err)
+    return
   end
   local content = file:read("*a")
   file:close()
   local ok, t = pcall(json.decode, content)
   if not ok then
-    U.ERR(z, "cannot decode database file %s", filename)
-    return self:new{devs={}, filename=filename}
+    U.ERR(z, "cannot decode database file %s, please repair or delete", self.filename)
+    os.exit(1) -- exit for now to allow for manual repair
   end
-  return self:new{devs=t, filename=filename}
+  for ieeeaddr, data in pairs(t) do self:insert(ieeeaddr, data) end
 end
+local devdata_filter = {db=true, interface=true, ieeeaddr=true, zcl=true, zcl_ep=true}
 function devdb:save()
   -- TODO: make this a write to a temp new file and an atomic move
-  local json = json.encode(self.devs)
+  local devices = {}
+  for dev, data in pairs(self.devs) do
+    devices[dev] = {}
+    for k, v in pairs(data) do
+      if not devdata_filter[k] then devices[dev][k]=v end
+    end
+  end
+  local res = json.encode(devices)
   local file, err = io.open(self.filename, "w")
   if not file then
     U.ERR(z, "cannot open database file %s, error: %s", filename, err)
     return
   end
-  file:write(json)
+  file:write(res)
   file:close()
   U.INFO(z, "device database written to file")
 end
@@ -71,6 +145,7 @@ function devdb:delete(id)
   local dev, ieeeaddr = self:find(id)
   if dev and ieeeaddr then
     self.devs[ieeeaddr] = nil
+    self:save()
     return true
   end
 end
@@ -78,21 +153,22 @@ function devdb:names()
   local names = {}
   for ieeeaddr, d in pairs(self.devs) do
     if d.name then
-      table.insert(names, d.name)
+      names[ieeeaddr] = d.name
     else
-      table.insert(names, ieeeaddr)
+      names[ieeeaddr] = ieeeaddr
     end
   end
   return names
 end
-function devdb:set(ieeeaddr, data)
-  local old = self:ieee(ieeeaddr)
+function devdb:set(device, data)
+  local old, ieeeaddr = self:find(device)
   if old then
     for k, v in pairs(old) do
       data[k] = data[k] or v
     end
+    self.devs[ieeeaddr] = data
+    self:save()
   end
-  self.devs[ieeeaddr] = data
 end
 function devdb:dump_list(writer)
   writer(string.format("%16s | %04s | %04s | %16s | %s\n", "IEEE Addr", "NWK", "Manu", "Name", "EPs"))
@@ -107,6 +183,17 @@ function devdb:dump_list(writer)
     writer(string.format("%10s | %04x | %04x | %16s | %s\n", ieeeaddr, v.nwkaddr, v.nodedesc.ManufacturerCode, v.name or "-", table.concat(eps, "; ")))
   end
 end
+
+-----------------------------------------------------------------------------
+-- Zigbee interface "object":
+-----------------------------------------------------------------------------
+local zigbee = U.object:new{
+  ev = {},
+  ZCL = ZCL,
+  dongle = nil,
+  learn_devices = true,
+  provision_devices = true
+}
 
 local provisioning = {}
 function zigbee:provision_device(ieeeaddr, nwkaddr)
@@ -126,18 +213,18 @@ function zigbee:provision_device(ieeeaddr, nwkaddr)
   end
 end
 
-function zigbee:unknown_dev(nwkaddr)
+function zigbee:unknown_nwkaddr(nwkaddr, ieeeaddr)
   U.INFO(z, "unknown device with NWK addr: %04x", nwkaddr)
-  local ieeeaddr = self.ieeeaddrcache[nwkaddr]
-  if not ieeeaddr then
-    ieeeaddr = self.dongle:get_ieeeaddr(nwkaddr)
-    U.INFO(z, "got IEEE addr %s", ieeeaddr)
-    self.ieeeaddrcache[nwkaddr] = ieeeaddr
-  end
+  ieeeaddr = ieeeaddr or self.dongle:get_ieeeaddr(nwkaddr)
   if ieeeaddr then
-    U.INFO(z, "device has IEEEAddr %s, provisioning device", ieeeaddr)
-    self:provision_device(ieeeaddr, nwkaddr)
-    return ieeeaddr
+    local dev = self.devices:ieee(ieeeaddr)
+    if dev then
+      U.INFO(z, "known under different NWK, update NWK addr for device %s", ieeeaddr)
+      dev.nwkaddr = nwkaddr
+      self.devices:save()
+    elseif self.provision_devices then
+      self:provision_device(ieeeaddr, nwkaddr)
+    end
   end
 end
 
@@ -183,9 +270,6 @@ function zigbee:touchlink(method)
     11,11,11,11,11,
     15,20,25,
     12,13,14,16,17,18,19,21,22,23,24,26 }
-  --[[
-  local scan_channels={11}
-  --]]
   for try=1,#scan_channels do
     local channel = scan_channels[try]
     self:zll_commissioning_send("ScanRequest", scan_request, channel)
@@ -215,11 +299,11 @@ function zigbee:touchlink(method)
 end
 
 function zigbee:init()
-  self.devices = devdb:open(self.device_database)
-  self.learn_devices = true
-  self.ieeeaddrcache = {}
+  self.devices = devdb:new{interface=self, filename=self.device_database}
+  self.devices:open()
   self.dongle = require("interfaces.zigbee.devices."..self.device.class):new(self.device):init()
 
+  -- run this in a task to allow it to suspend
   ctx.task{name="initialize", function()
     if not self.dongle:initialize_coordinator(true) then
       U.ERR("main", "could not start coordinator")
@@ -231,16 +315,11 @@ function zigbee:init()
   ctx.task{name="zigbee_announce_listener", function()
     for ok, data in ctx:wait_all{"Zigbee", self.dongle, "device_announce"} do
       if not ok then return U.ERR(z, "error waiting for device announcements") end
-      local dev = self.devices:ieee(data.ieeeaddr)
+      local dev = self.devices:nwk(data.nwkaddr)
       if not dev then
-        self:provision_device(data.ieeeaddr, data.nwkaddr)
+        self:unknown_nwkaddr(data.nwkaddr, data.ieeeaddr)
       else
-        if dev.nwkaddr ~= data.nwkaddr then
-          U.INFO(z, "update NWK addr for device %s", data.ieeeaddr)
-          dev.nwkaddr = data.nwkaddr
-          self.devices:save()
-        end
-        ctx:fire({"Zigbee", "announce", dev.name or data.ieeeaddr}, {from = data.ieeeaddr})
+        ctx:fire({"Zigbee", "announce", data.ieeeaddr}, {from = data.ieeeaddr})
       end
     end
   end}
@@ -254,10 +333,13 @@ function zigbee:init()
       else
         U.INFO(z, "got AF message")
         local ieeeaddr
-        if type(msg.src) == "number" and self.learn_devices then
-          dev, ieeeaddr = self.devices:nwk(msg.src)
-          if not dev then
-            self:unknown_dev(msg.src)
+        if type(msg.src) == "number" then
+          if self.learn_devices then
+            local dev
+            dev, ieeeaddr = self.devices:nwk(msg.src)
+            if not dev then
+              self:unknown_nwkaddr(msg.src)
+            end
           end
         elseif type(msg.src) == "string" then
           ieeeaddr = msg.src
@@ -270,105 +352,10 @@ function zigbee:init()
             else
               seq_numbers[ieeeaddr] = data.TransactionSequenceNumber
               U.DEBUG(z, "parsed: %s", U.dump(data))
-              ctx:fire({"Zigbee", "ZCL", "from", (type(dev) == "table") and dev.name or ieeeaddr}, {from = ieeeaddr, cluster = msg.clusterid, srcep = msg.srcendpoint, linkquality = msg.linkquality, data = data})
+              ctx:fire({"Zigbee", "ZCL", "from", ieeeaddr}, {from = ieeeaddr, cluster = msg.clusterid, srcep = msg.srcendpoint, linkquality = msg.linkquality, data = data})
             end
           else
             U.INFO(z, "error decoding ZCL message: %s", data)
-          end
-        end
-      end
-    end
-  end}
-  -- handling of outgoing data
-  ctx.task{name="zigbee_tx_handler", function()
-    local fcodec = ZCL"Frame"
-    for ok, msg in ctx:wait_all{"Zigbee", "ZCL", "to"} do
-      if not ok then
-        U.ERR(z, "error waiting for AF message transmit")
-      else
-        local dev, ieeeaddr = self.devices:find(msg.dst)
-        U.DEBUG(z, "sending ZCL message to device %s, cluster %04x: %s", ieeeaddr, msg.cluster, U.dump(msg.data))
-        if dev then
-          if not dev.eps then
-            U.ERR(z, "no endpoint information for device %s", msg.dst)
-          else
-            local dst_ep = msg.dst_ep
-            if not dst_ep then
-              for _, ep in ipairs(dev.eps) do
-                if U.contains(ep.InClusterList, {msg.cluster}) then
-                  dst_ep = ep.Endpoint
-                end
-              end
-            end
-            if not dst_ep then
-              U.ERR(z, "no endpoint on device %s for cluster %04x", msg.dst, msg.cluster)
-            else
-              local ok, frame = xpcall(fcodec.encode, debug.traceback, fcodec, msg.data, {ClusterId = msg.cluster})
-              if not ok then
-                U.ERR(z, "could not encode ZCL data, error: %s", frame)
-              else
-                local source_route
-                if dev.source_route then
-                  source_route = {}
-                  for _, d in ipairs(dev.source_route) do
-                    local route_dev = self.devices:find(d)
-                    if not route_dev then
-                      source_route = nil
-                      break
-                    end
-                    U.DEBUG(z, "source routing via %04X (%s)", route_dev.nwkaddr, route_dev.name)
-                    table.insert(source_route, route_dev.nwkaddr)
-                  end
-                end
-                self.dongle:tx{
-                  dst = dev.nwkaddr,
-                  source_route = source_route,
-                  dst_ep = dst_ep,
-                  src_ep = 1, -- TODO: make this flexible?
-                  clusterid = msg.cluster,
-                  data = frame
-                }
-              end
-            end
-          end
-        end
-      end
-    end
-  end}
-  -- handling of device naming and suchlike
-  ctx.task{name="zigbee_device_attribute", function()
-    for ok, msg in ctx:wait_all{"Zigbee", "device_attibute"} do
-      if not ok then
-        U.ERR(z, "error waiting for device_attribute message")
-      else
-        local dev = self.devices:find(msg.id)
-        if dev then
-          if msg.key then
-            dev[msg.key] = msg.value
-          end
-          self.devices:save()
-        end
-      end
-    end
-  end}
-  -- handling of device database operations
-  ctx.task{name="zigbee_device_db", function()
-    for ok, msg in ctx:wait_all{"Zigbee", "device_db"} do
-      if not ok then
-        U.ERR(z, "error waiting for device_attribute message")
-      else
-        if msg.cmd and msg.cmd=="copy" then
-          local dev = self.devices:find(msg.id)
-          if dev then
-            local ndev = U.copy(dev)
-            ndev.name = msg.name
-            ndev.nwkaddr = msg.nwkaddr
-            self.devices:set(msg.newid, ndev)
-          end
-          self.devices:save()
-        elseif msg.cmd and msg.cmd=="delete" then
-          if msg.id and self.devices:delete(msg.id) then
-            self.devices:save()
           end
         end
       end

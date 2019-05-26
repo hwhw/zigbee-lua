@@ -1,11 +1,12 @@
 local ctx = require"lib.ctx"
 local U = require"lib.util"
 
-local any = U.object:new{
-  id = nil,
+local zcl = U.object:new{
+  device = nil,
+  ep = nil,
 }
 
-function any:send_af(cluster, data, global, waitreply)
+function zcl:send_af(cluster, data, global, waitreply)
   local txseq = ((self.txseq or 0) + 1) % 256
   self.txseq = txseq
 
@@ -13,25 +14,29 @@ function any:send_af(cluster, data, global, waitreply)
   if not waitreply then table.insert(data.FrameControl, "DisableDefaultResponse") end
   data.TransactionSequenceNumber = txseq
 
-  ctx:fire({"Zigbee", "ZCL", "to"}, {
-    dst = self.id,
+  local ok = self.device:tx_zcl{
+    dst = self.device.ieeeaddr,
+    dst_ep = self.ep,
     cluster = cluster,
     data = data
-  })
+  }
 
-  if waitreply then
-    local filter = function(msg)
-      return msg.cluster == cluster
-        and msg.data.TransactionSequenceNumber == txseq
+  if ok then
+    if waitreply then
+      local filter = function(msg)
+        return msg.cluster == cluster
+          and msg.data.TransactionSequenceNumber == txseq
+      end
+      local ok, msg = ctx:wait({"Zigbee", "ZCL", "from", self.device.ieeeaddr}, filter, waitreply)
+      return ok, msg
+    else
+      return txseq
     end
-    local ok, msg = ctx:wait({"Zigbee", "ZCL", "from", self.id}, filter, waitreply)
-    return ok, msg
-  else
-    return txseq
   end
+  return false
 end
 
-function any:get_attribute_list(cluster)
+function zcl:get_attribute_list(cluster)
   local attributes = {}
   local done = false
   local start = 0
@@ -63,10 +68,10 @@ function any:get_attribute_list(cluster)
       start = lastattr + 1
     end
   end
-  --U.DEBUG("any", "cluster %04x, attributes: %s", cluster, U.dump(attributes))
+  --U.DEBUG("zcl", "cluster %04x, attributes: %s", cluster, U.dump(attributes))
   return attributes
 end
-function any:get_attributes(cluster, attributes, at_once)
+function zcl:get_attributes(cluster, attributes, at_once)
   at_once = at_once or 5
   local values = {}
   for i=0,#attributes,at_once do
@@ -97,7 +102,7 @@ function any:get_attributes(cluster, attributes, at_once)
   end
   return values
 end
-function any:set_attributes(cluster, attribs)
+function zcl:set_attributes(cluster, attribs)
   local attrlist = {}
   for _, a in ipairs(attribs) do
     table.insert(attrlist, {
@@ -118,18 +123,18 @@ function any:set_attributes(cluster, attribs)
   }, true)
 end
 
-function any:identify(time)
+function zcl:identify(time)
   self:send_af(0x0003, {
     IdentifyClusterFrame = { CommandIdentifier = "Identify", Identify = { IdentifyTime = time or 4 } }
   })
 end
 
-function any:add_group(group_id, group_name)
+function zcl:add_group(group_id, group_name)
   self:send_af(0x0004, {
     GroupsClusterFrame = { CommandIdentifier = "AddGroup", AddGroup = { GroupId = group_id, GroupName = group_name or "" } }
   })
 end
-function any:get_group_membership()
+function zcl:get_group_membership()
   local ok, msg = self:send_af(0x0004, {
     GroupsClusterFrame = { CommandIdentifier = "GetGroupMembership", GetGroupMembership = { Groups = {} } }
   }, false, 2)
@@ -142,24 +147,24 @@ function any:get_group_membership()
     return msg.data.GroupsClusterFrame.GetGroupMembershipResponse.Groups, msg.data.GroupsClusterFrame.GetGroupMembershipResponse.Capacity
   end
 end
-function any:remove_group(group_id)
+function zcl:remove_group(group_id)
   self:send_af(0x0004, {
     GroupsClusterFrame = { CommandIdentifier = "RemoveGroup", RemoveGroup = { GroupId = group_id } }
   })
 end
 
-function any:switch(cmd)
+function zcl:switch(cmd)
   self:send_af(0x0006, {
     OnOffClusterFrame = { CommandIdentifier = cmd }
   }, false, 2)
 end
 
-function any:check_on_off()
+function zcl:check_on_off()
   local is_on = self:get_attributes(0x0006, {0})
   return is_on and is_on[0]
 end
 
-function any:color(x, y, transition_time)
+function zcl:color(x, y, transition_time)
   x = x or 0.9999
   x = (x < 1.0) and (x * 0xFFFE) or x
   y = y or 0.9999
@@ -175,7 +180,7 @@ function any:color(x, y, transition_time)
     }
   }, false, 2)
 end
-function any:hue_sat(hue, sat, transition_time)
+function zcl:hue_sat(hue, sat, transition_time)
   hue = hue or 0.9999
   hue = (hue < 1.0) and (hue * 0xFE) or hue
   sat = sat or 0.9999
@@ -191,7 +196,7 @@ function any:hue_sat(hue, sat, transition_time)
     }
   }, false, 2)
 end
-function any:ehue_sat(hue, sat, transition_time)
+function zcl:ehue_sat(hue, sat, transition_time)
   hue = hue or 0.9999
   hue = (hue < 1.0) and (hue * 0xFFFE) or hue
   sat = sat or 0.9999
@@ -208,7 +213,7 @@ function any:ehue_sat(hue, sat, transition_time)
   }, false, 2)
 end
 
-function any:ctemp(mireds, transition_time)
+function zcl:ctemp(mireds, transition_time)
   self:send_af(0x0300, {
     ColorControlClusterFrame = {
       CommandIdentifier = "MoveToColorTemperature",
@@ -219,7 +224,7 @@ function any:ctemp(mireds, transition_time)
     }
   }, false, 2)
 end
-function any:check_ctemp()
+function zcl:check_ctemp()
   local ctemp = self:get_attributes(0x0300, {7,0x400b,0x400c}) or {}
   return ctemp[7], ctemp[0x400b], ctemp[0x400c]
 end
@@ -239,7 +244,7 @@ local current_mode = {
   [2] = "ctemp",
   [3] = "eh_s"
 }
-function any:check_colors()
+function zcl:check_colors()
   local colors = self:get_attributes(0x0300, {0,1,7,8,0x4000,0x4001,0x400a,0x400b,0x400c}, 20) or {}
   if not colors[0x400a] or not colors[8] then return end
   local capabilites = {
@@ -262,7 +267,7 @@ function any:check_colors()
   }
 end
 
-function any:level(level, transition_time, withonoff)
+function zcl:level(level, transition_time, withonoff)
   level = level or 0.9999
   level = (level < 1.0) and (level * 0xFE) or level
   local method = withonoff and "MoveToLevelWithOnOff" or "MoveToLevel"
@@ -276,27 +281,27 @@ function any:level(level, transition_time, withonoff)
     }
   }, false, 2)
 end
-function any:check_level()
+function zcl:check_level()
   local level = self:get_attributes(0x0008, {0})
   return level and level[0]
 end
 
-function any:on_announce(cb)
-  ctx.task{name=string.format("%s/on_announce", self.id),function()
-    for ok, msg in ctx:wait_all{"Zigbee", "announce", self.id} do
-      U.DEBUG("Zigbee_any", "got announcement: %s", U.dump(msg))
+function zcl:on_announce(cb)
+  ctx.task{name=string.format("%s/on_announce", self.device.ieeeaddr),function()
+    for ok, msg in ctx:wait_all{"Zigbee", "announce", self.device.ieeeaddr} do
+      U.DEBUG("Zigbee_zcl", "got announcement: %s", U.dump(msg))
       cb()
     end
   end}
 end
 
-function any:on_button_press(cb)
-  ctx.task{name=string.format("%s/on_button_press", self.id),function()
-    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
+function zcl:on_button_press(cb)
+  ctx.task{name=string.format("%s/on_button_press", self.device.ieeeaddr),function()
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.device.ieeeaddr}, function(msg)
       return msg.cluster == 6 and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes
       end) do
 
-      U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
+      U.DEBUG("Zigbee_zcl", "got event: %s", U.dump(msg))
       local btn = msg.srcep
       for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
         if r.AttributeIdentifier == 0x8000 then
@@ -313,13 +318,13 @@ function any:on_button_press(cb)
   end}
 end
 
-function any:on_measurement(cluster, id, cb)
-  ctx.task{name=string.format("%s/on_measurement_temp", self.id),function()
-    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
+function zcl:on_measurement(cluster, id, cb)
+  ctx.task{name=string.format("%s/on_measurement_temp", self.device.ieeeaddr),function()
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.device.ieeeaddr}, function(msg)
       return msg.cluster == cluster and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes
       end) do
 
-      U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
+      U.DEBUG("Zigbee_zcl", "got event: %s", U.dump(msg))
       for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
         if r.AttributeIdentifier == id then
           cb(r.Attribute.Value)
@@ -330,13 +335,13 @@ function any:on_measurement(cluster, id, cb)
   end}
 end
 
-function any:on_occupancy(cb)
-  ctx.task{name=string.format("%s/on_occupancy", self.id),function()
-    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
+function zcl:on_occupancy(cb)
+  ctx.task{name=string.format("%s/on_occupancy", self.device.ieeeaddr),function()
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.device.ieeeaddr}, function(msg)
       return msg.cluster == 0x406 and msg.data.GeneralCommandFrame and msg.data.GeneralCommandFrame.ReportAttributes
       end) do
 
-      U.DEBUG("Zigbee_any", "got event: %s", U.dump(msg))
+      U.DEBUG("Zigbee_zcl", "got event: %s", U.dump(msg))
       local btn = msg.ep
       for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
         if r.AttributeIdentifier == 0 and r.Attribute.Value[0] then
@@ -348,10 +353,10 @@ function any:on_occupancy(cb)
   end}
 end
 
-function any:on_aqara_report(cb)
+function zcl:on_aqara_report(cb)
   local aqaracodec=require"interfaces.zigbee.xiaomi-aqara""AqaraReport"
-  ctx.task{name=string.format("%s/on_aqara_report", self.id),function()
-    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
+  ctx.task{name=string.format("%s/on_aqara_report", self.device.ieeeaddr),function()
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.device.ieeeaddr}, function(msg)
       return msg and msg.cluster == 0
         and msg.data
         -- not all Aqara devices claim the ZCL packet to be manufacturer specific, so we
@@ -373,10 +378,10 @@ function any:on_aqara_report(cb)
       if msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].AttributeIdentifier==65281 then
         local data = aqaracodec:decode({string.byte(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value,1,-1)})
         if data then
-          U.DEBUG("Zigbee_any", "got Xiaomi/Aqara attributes: %s", U.dump(data))
+          U.DEBUG("Zigbee_zcl", "got Xiaomi/Aqara attributes: %s", U.dump(data))
           if cb then cb(data) end
         else
-          U.DEBUG("Zigbee_any", "error parsing Aqara data:\n%s", U.hexdump(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value))
+          U.DEBUG("Zigbee_zcl", "error parsing Aqara data:\n%s", U.hexdump(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value))
         end
       else
         local old = msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Members
@@ -385,22 +390,22 @@ function any:on_aqara_report(cb)
         if old[2] then table.insert(data.ReportAttributes, {Attribute = old[2].Attribute, AttributeIdentifier = 1}) end
         if old[3] then table.insert(data.ReportAttributes, {Attribute = old[3].Attribute, AttributeIdentifier = 4}) end
         if old[4] then table.insert(data.ReportAttributes, {Attribute = old[4].Attribute, AttributeIdentifier = 6}) end
-        U.DEBUG("Zigbee_any", "got old style Xiaomi/Aqara attributes: %s", U.dump(data))
+        U.DEBUG("Zigbee_zcl", "got old style Xiaomi/Aqara attributes: %s", U.dump(data))
         if cb then cb(data) end
       end
     end
   end}
 end
 
-function any:on_cube_action(cb)
-  ctx.task{name=string.format("%s/on_cube_action", self.id),function()
-    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.id}, function(msg)
+function zcl:on_cube_action(cb)
+  ctx.task{name=string.format("%s/on_cube_action", self.device.ieeeaddr),function()
+    for ok, msg in ctx:wait_all({"Zigbee", "ZCL", "from", self.device.ieeeaddr}, function(msg)
       return (msg.cluster == 0x0c or msg.cluster == 0x12)
         and msg.data.GeneralCommandFrame
         and msg.data.GeneralCommandFrame.ReportAttributes
         and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports
       end) do
-      U.DEBUG("Zigbee_any", "got cube event: %s", U.dump(msg))
+      U.DEBUG("Zigbee_zcl", "got cube event: %s", U.dump(msg))
       for _, r in ipairs(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports) do
         if r.AttributeIdentifier == 0x55 then
           local v = r.Attribute.Value
@@ -432,4 +437,4 @@ function any:on_cube_action(cb)
   end}
 end
 
-return any
+return zcl

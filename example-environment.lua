@@ -6,8 +6,12 @@ local M = ctx.interfaces.mqtt_client[1]
 
 local E = U.object:new()
 
-local devices = ctx.interfaces.zigbee[1].devices:names()
-for _, d in ipairs(devices) do E[d] = D:new{id=d} end
+local Z = ctx.interfaces.zigbee[1]
+local devices = Z.devices:names()
+for ieeeaddr, d in pairs(devices) do
+  local dev = Z.devices:ieee(ieeeaddr)
+  E[d] = dev.zcl
+end
 
 local lastdev = nil
 local cur_sets = {}
