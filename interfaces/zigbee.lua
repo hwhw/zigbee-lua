@@ -94,8 +94,7 @@ function devdb:open()
   for ieeeaddr, data in pairs(t) do self:insert(ieeeaddr, data) end
 end
 local devdata_filter = {db=true, interface=true, ieeeaddr=true, zcl=true, zcl_ep=true}
-function devdb:save()
-  -- TODO: make this a write to a temp new file and an atomic move
+function devdb:to_json()
   local devices = {}
   for dev, data in pairs(self.devs) do
     devices[dev] = {}
@@ -103,13 +102,16 @@ function devdb:save()
       if not devdata_filter[k] then devices[dev][k]=v end
     end
   end
-  local res = json.encode(devices)
+  return json.encode(devices)
+end
+function devdb:save()
+  -- TODO: make this a write to a temp new file and an atomic move
   local file, err = io.open(self.filename, "w")
   if not file then
     U.ERR(z, "cannot open database file %s, error: %s", filename, err)
     return
   end
-  file:write(res)
+  file:write(self:to_json())
   file:close()
   U.INFO(z, "device database written to file")
 end
