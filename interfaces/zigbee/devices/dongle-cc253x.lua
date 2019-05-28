@@ -221,7 +221,7 @@ local function mk64bitaddr(addr)
 end
 
 function dongle:tx(p, waitconfirm)
-  local trans_id = (self.trans_id or 0) + 1
+  local trans_id = ((self.trans_id or 0) + 1) % 256
   self.trans_id = trans_id
   if p.interpan then
     p.src_ep = 2

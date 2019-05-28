@@ -247,7 +247,7 @@ local current_mode = {
 function zcl:check_colors()
   local colors = self:get_attributes(0x0300, {0,1,7,8,0x4000,0x4001,0x400a,0x400b,0x400c}, 20) or {}
   if not colors[0x400a] or not colors[8] then return end
-  local capabilites = {
+  local capabilities = {
     hue_sat = colors[0x400a][0],
     enhanced_hue = colors[0x400a][1],
     color_loop = colors[0x400a][2],

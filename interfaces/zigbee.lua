@@ -55,6 +55,21 @@ function device_mt:tx_zcl(msg)
   return false
 end
 
+local devdata_filter = {db=true, interface=true, ieeeaddr=true, zcl=true, zcl_ep=true}
+function device_mt:get_data()
+  local device = {}
+  for k, v in pairs(self) do
+    if not devdata_filter[k] then device[k]=v end
+  end
+  return device
+end
+function device_mt:set(data)
+  for k, v in pairs(data) do
+    self[k] = v
+  end
+  self.db:save()
+end
+
 -----------------------------------------------------------------------------
 -- Zigbee device database "object":
 -----------------------------------------------------------------------------
@@ -71,7 +86,7 @@ function devdb:insert(ieeeaddr, data)
     dev.zcl_ep = {}
     if dev.eps then
       for k, v in ipairs(dev.eps) do
-        dev.zcl_ep[k] = zcl_interface:new{device=dev, ep=v.Endpoint}
+        dev.zcl_ep[v.Endpoint] = zcl_interface:new{device=dev, ep=v.Endpoint}
       end
     end
     self.devs[ieeeaddr] = dev
@@ -93,16 +108,12 @@ function devdb:open()
   end
   for ieeeaddr, data in pairs(t) do self:insert(ieeeaddr, data) end
 end
-local devdata_filter = {db=true, interface=true, ieeeaddr=true, zcl=true, zcl_ep=true}
-function devdb:to_json()
+function devdb:get_data()
   local devices = {}
-  for dev, data in pairs(self.devs) do
-    devices[dev] = {}
-    for k, v in pairs(data) do
-      if not devdata_filter[k] then devices[dev][k]=v end
-    end
+  for id, dev in pairs(self.devs) do
+    devices[id] = dev:get_data()
   end
-  return json.encode(devices)
+  return devices
 end
 function devdb:save()
   -- TODO: make this a write to a temp new file and an atomic move
@@ -111,7 +122,7 @@ function devdb:save()
     U.ERR(z, "cannot open database file %s, error: %s", filename, err)
     return
   end
-  file:write(self:to_json())
+  file:write(json.encode(self:get_data()))
   file:close()
   U.INFO(z, "device database written to file")
 end
@@ -161,16 +172,6 @@ function devdb:names()
     end
   end
   return names
-end
-function devdb:set(device, data)
-  local old, ieeeaddr = self:find(device)
-  if old then
-    for k, v in pairs(old) do
-      data[k] = data[k] or v
-    end
-    self.devs[ieeeaddr] = data
-    self:save()
-  end
 end
 function devdb:dump_list(writer)
   writer(string.format("%16s | %04s | %04s | %16s | %s\n", "IEEE Addr", "NWK", "Manu", "Name", "EPs"))

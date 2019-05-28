@@ -86,7 +86,8 @@ end
 function httpd:add_handler(method_match, url_match, callback)
   self.handler[callback] = {
     match = function(method, url)
-      return (method==method_match or nil) and string.match(url, url_match)
+      if method ~= method_match then return end
+      return string.match(url, url_match)
     end,
     callback = function(connection, params, url, method, version, upload_data, upload_data_size, ptr)
       local conn_id = tostring(connection)
