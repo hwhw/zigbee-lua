@@ -65,6 +65,9 @@ function device_mt:get_data()
 end
 function device_mt:set(data)
   for k, v in pairs(data) do
+    if v=="___nil" then
+      v = nil
+    end
     self[k] = v
   end
   self.db:save()
