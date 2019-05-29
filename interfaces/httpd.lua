@@ -65,6 +65,7 @@ end
 
 local value_kinds = bit.bor(M.MHD_HEADER_KIND, M.MHD_COOKIE_KIND, M.MHD_GET_ARGUMENT_KIND)
 local post_data = {}
+local post_processor = {}
 local unparsed_marker = ffi.cast("void*", 1)
 local response = {}
 local function send_response(connection, msg)
@@ -79,7 +80,6 @@ local function send_response(connection, msg)
   for key, value in pairs(msg.headers) do
     M.MHD_add_response_header(r, tostring(key), tostring(value))
   end
-  M.MHD_queue_response(connection, msg.code, r)
   M.MHD_queue_response(connection, msg.code, r)
   M.MHD_destroy_response(r)
 end
@@ -102,7 +102,7 @@ function httpd:add_handler(method_match, url_match, callback)
       if method == "POST" then
         U.DEBUG("httpd", "POST: C:%s, P:%s, S:%s, D:%s", connection, ptr[0], upload_data_size[0], post_data[conn_id])
         if ptr[0] == nil then
-          local pp = M.MHD_create_post_processor(connection, 4096,
+          post_processor[conn_id] = ffi.cast("MHD_PostDataIterator",
             function(coninfo_cls, kind, key, filename, content_type, transfer_encoding, data, off, size)
               if size > 0 then
                 key = key and ffi.string(key)
@@ -112,11 +112,14 @@ function httpd:add_handler(method_match, url_match, callback)
               else
                 return 0
               end
-            end, nil)
+            end)
+          local pp = M.MHD_create_post_processor(connection, 4096, post_processor[conn_id], nil)
           if pp ~= nil then
             ptr[0] = pp
           else
             ptr[0] = unparsed_marker
+            post_processor[conn_id]:free()
+            post_processor[conn_id] = nil
           end
           post_data[conn_id] = {}
           return 1
@@ -136,6 +139,8 @@ function httpd:add_handler(method_match, url_match, callback)
             post_arguments = { _unparsed = table.concat(post_data[conn_id]) }
           else
             M.MHD_destroy_post_processor(ptr[0])
+            post_processor[conn_id]:free()
+            post_processor[conn_id] = nil
             post_arguments = post_data[conn_id]
           end
           post_data[conn_id] = nil
@@ -144,7 +149,7 @@ function httpd:add_handler(method_match, url_match, callback)
       -- handling of HTTP client headers, GET parameters:
       local headers = {}
       local get_arguments = {}
-      local function fetchheaders(cls, kind, key, value)
+      local fetchheaders=ffi.cast("MHD_KeyValueIterator", function (cls, kind, key, value)
         key = key and ffi.string(key)
         value = value and ffi.string(value)
         if key then
@@ -156,8 +161,9 @@ function httpd:add_handler(method_match, url_match, callback)
           end -- TODO: other kinds?
         end
         return 1
-      end
+      end)
       M.MHD_get_connection_values(connection, value_kinds, fetchheaders, nil)
+      fetchheaders:free()
       -- handling of new requests
       local has_completed = false
       local is_suspended = false
@@ -190,7 +196,8 @@ end
 function httpd:init()
   self.handler = {}
 
-  self.client = function(cls, connection, url, method, version, upload_data, upload_data_size, ptr)
+  self.client = ffi.cast("MHD_AccessHandlerCallback",
+  function(cls, connection, url, method, version, upload_data, upload_data_size, ptr)
     local method = ffi.string(method)
     local url = ffi.string(url)
     U.INFO({"httpd","request"}, "%s %s %s %s %s %s", method, url, ffi.string(version), upload_data, upload_data_size and tonumber(upload_data_size[0]), ptr)
@@ -203,7 +210,7 @@ function httpd:init()
     local ret = M.MHD_queue_response(connection, 404, r)
     M.MHD_destroy_response(r)
     return ret
-  end
+  end)
 
   local timeout = ffi.new("MHD_UNSIGNED_LONG_LONG[1]")
   ctx.srv:register_before_wait(function()
