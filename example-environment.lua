@@ -1,7 +1,6 @@
 #!/usr/bin/env -S luajit
 require"lib.ctx"(require"config", function(ctx)
 local U = require"lib.util"
-local D = require"interfaces.zigbee.any"
 local json = require"lib.json-lua.json"
 local M = ctx.interfaces.mqtt_client[1]
 
