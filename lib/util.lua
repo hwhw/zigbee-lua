@@ -1,5 +1,4 @@
 local util = {}
-local config = require"config"
 local bit = require"bit"
 
 -- assert wrapper for proper error messages - about the same as
@@ -14,9 +13,9 @@ end
 util.logoutput = io.stderr
 function util.log(level, subsys, ...)
   subsys = (type(subsys)=="table") and subsys or {subsys}
-  config.log = config.log or {DBG={false}}
+  util.config.log = util.config.log or {DBG={false}}
   local do_log = true
-  local domain = config.log[level]
+  local domain = util.config.log[level]
   local n = 1
   while domain ~= nil do
     if type(domain)=="table" then
@@ -79,6 +78,14 @@ function util.filter(f)
     end
     return true
   end
+end
+function util.array_map(t, f)
+  local ret = {}
+  for _, v in ipairs(t) do
+    local r = f(v)
+    if r ~= nil then table.insert(ret, r) end
+  end
+  return ret
 end
 function util.fromhex(v)
   local d={}

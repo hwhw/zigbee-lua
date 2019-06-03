@@ -1,4 +1,5 @@
-local ctx = require"lib.ctx"
+#!/usr/bin/env -S luajit
+require"lib.ctx"(require"config", function(ctx)
 local U = require"lib.util"
 local D = require"interfaces.zigbee.any"
 
@@ -18,3 +19,4 @@ local function set_lastdev(dev)
 end
 
 return E
+end)

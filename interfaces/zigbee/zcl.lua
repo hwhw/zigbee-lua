@@ -6,34 +6,40 @@ local zcl = U.object:new{
   ep = nil,
 }
 
-function zcl:send_af(cluster, data, global, waitreply)
-  local txseq = ((self.txseq or 0) + 1) % 256
-  self.txseq = txseq
+local txseqs={}
 
-  data.FrameControl = { global and "FrameTypeGlobal" or "FrameTypeLocal", "DirectionToServer" }
-  if not waitreply then table.insert(data.FrameControl, "DisableDefaultResponse") end
-  data.TransactionSequenceNumber = txseq
+function zcl:send_af(cluster, data, global, waitreply, retries)
+  retries = retries or 1
+  local ok, msg
+  for retry=1,retries do
+    local txseq = ((txseqs[self.device] or 0) + 1) % 256
+    txseqs[self.device] = txseq
 
-  local ok = self.device:tx_zcl{
-    dst = self.device.ieeeaddr,
-    dst_ep = self.ep,
-    cluster = cluster,
-    data = data
-  }
+    data.FrameControl = { global and "FrameTypeGlobal" or "FrameTypeLocal", "DirectionToServer" }
+    if not waitreply then table.insert(data.FrameControl, "DisableDefaultResponse") end
+    data.TransactionSequenceNumber = txseq
 
-  if ok then
-    if waitreply then
-      local filter = function(msg)
-        return msg.cluster == cluster
-          and msg.data.TransactionSequenceNumber == txseq
+    ok = self.device:tx_zcl{
+      dst = self.device.ieeeaddr,
+      dst_ep = self.ep,
+      cluster = cluster,
+      data = data
+    }
+
+    if ok then
+      if waitreply then
+        local filter = function(msg)
+          return msg.cluster == cluster
+            and msg.data.TransactionSequenceNumber == txseq
+        end
+        ok, msg = ctx:wait({"Zigbee", "ZCL", "from", self.device.ieeeaddr}, filter, waitreply)
+        if ok then break end
+      else
+        return txseq
       end
-      local ok, msg = ctx:wait({"Zigbee", "ZCL", "from", self.device.ieeeaddr}, filter, waitreply)
-      return ok, msg
-    else
-      return txseq
     end
   end
-  return false
+  return ok, msg
 end
 
 function zcl:get_attribute_list(cluster)
@@ -49,7 +55,7 @@ function zcl:get_attribute_list(cluster)
             MaximumAttributeIdentifiers = 20
           }
         }
-      }, true, 5)
+      }, true, 1, 3)
     if not ok then return end
     if not msg.data
       or not msg.data.GeneralCommandFrame
@@ -86,7 +92,7 @@ function zcl:get_attributes(cluster, attributes, at_once)
             AttributeIdentifiers = attr_list
           }
         }
-      }, true, 5)
+      }, true, 1.5, 3)
     if ok
       and msg.data
       and msg.data.GeneralCommandFrame
@@ -156,7 +162,7 @@ end
 function zcl:switch(cmd)
   self:send_af(0x0006, {
     OnOffClusterFrame = { CommandIdentifier = cmd }
-  }, false, 2)
+  }, false, nil, 3)
 end
 
 function zcl:check_on_off()
@@ -178,7 +184,7 @@ function zcl:color(x, y, transition_time)
         TransitionTime = (transition_time or 1) * 10
       }
     }
-  }, false, 2)
+  }, false, nil, 3)
 end
 function zcl:hue_sat(hue, sat, transition_time)
   hue = hue or 0.9999
@@ -194,7 +200,7 @@ function zcl:hue_sat(hue, sat, transition_time)
         TransitionTime = (transition_time or 1) * 10
       }
     }
-  }, false, 2)
+  }, false, nil, 3)
 end
 function zcl:ehue_sat(hue, sat, transition_time)
   hue = hue or 0.9999
@@ -210,7 +216,7 @@ function zcl:ehue_sat(hue, sat, transition_time)
         TransitionTime = (transition_time or 1) * 10
       }
     }
-  }, false, 2)
+  }, false, nil, 3)
 end
 
 function zcl:ctemp(mireds, transition_time)
@@ -222,7 +228,7 @@ function zcl:ctemp(mireds, transition_time)
         TransitionTime = (transition_time or 1) * 10
       }
     }
-  }, false, 2)
+  }, false, nil, 3)
 end
 function zcl:check_ctemp()
   local ctemp = self:get_attributes(0x0300, {7,0x400b,0x400c}) or {}
@@ -279,7 +285,7 @@ function zcl:level(level, transition_time, withonoff)
         TransitionTime = (transition_time or 1) * 10
       }
     }
-  }, false, 2)
+  }, false, nil, 3)
 end
 function zcl:check_level()
   local level = self:get_attributes(0x0008, {0})

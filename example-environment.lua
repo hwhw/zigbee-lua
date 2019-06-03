@@ -1,4 +1,5 @@
-local ctx = require"lib.ctx"
+#!/usr/bin/env -S luajit
+require"lib.ctx"(require"config", function(ctx)
 local U = require"lib.util"
 local D = require"interfaces.zigbee.any"
 local json = require"lib.json-lua.json"
@@ -418,4 +419,4 @@ ctx.task{name="mqtt_permit_join",function()
   end
 end}
 
-return E
+end)

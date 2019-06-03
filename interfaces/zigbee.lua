@@ -209,7 +209,7 @@ function zigbee:provision_device(ieeeaddr, nwkaddr)
     ctx.task{name="zigbee_provisioning", function()
       local d, err = self.dongle:provision_device(nwkaddr)
       if d then
-        self.devices:set(ieeeaddr, d)
+        self.devices:insert(ieeeaddr, d)
         self.devices:save()
       end
       provisioning[ieeeaddr] = nil

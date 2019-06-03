@@ -1,22 +1,20 @@
 local U = require"lib.util"
 
 local ctx = {
-  config = require"config",
   tasks_waiting = {_handlers={}},
   interfaces = {}
 }
 
-ctx.srv = require(ctx.config.srv_implementation)
+function ctx:init(ctx_config)
+  self.config = ctx_config
+  self.srv = require(ctx_config.srv_implementation or "lib.srv-epoll")
 
-function ctx:init()
-  for class, instances in pairs(self.config.interfaces) do
+  for class, instances in pairs(ctx_config.interfaces or {}) do
     for n, config in ipairs(instances) do
       self.interfaces[class] = self.interfaces[class] or {}
       self.interfaces[class][n] = require("interfaces."..class):new(config):init()
     end
   end
-
-  return self
 end
 
 function ctx:run()
@@ -311,4 +309,12 @@ function ctx:parallel(...) return self:currenttask():parallel(...) end
 -- intended
 ctx.task = task:new()
 
-return ctx
+return setmetatable(ctx, {
+  __call = function(this, config, environment)
+    config = config or {}
+    U.config = config
+    this:init(config)
+    environment(this)
+    this:run()
+  end
+})

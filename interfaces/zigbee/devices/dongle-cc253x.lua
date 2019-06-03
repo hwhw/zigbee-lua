@@ -131,6 +131,14 @@ function dongle:init()
     end
   end}
 
+  self.on_end_device_announce = ctx.task{name="cc253x_source_route", function()
+    for _, srcrt in ctx:wait_all{"CC-ZNP-MT", self, "AREQ_ZDO_SRC_RTG_IND"} do
+      U.INFO(self.subsys, "source route received for 0x%04x: via {%s}", srcrt.DstAddr,
+        table.concat(U.array_map(srcrt.RelayList, function(r) return string.format("%04x",r) end), ", "))
+      ctx:fire({"Zigbee", self, "source_route"}, {nwkaddr = srcrt.DstAddr, relays = srcrt.RelayList})
+    end
+  end}
+
   self.on_end_device_announce = ctx.task{name="cc253x_end_device_announce", function()
     for _, enddevice in ctx:wait_all{"CC-ZNP-MT", self, "AREQ_ZDO_END_DEVICE_ANNCE_IND"} do
       U.INFO(self.subsys, "end device announce received, device is %s (short: 0x%04x)", enddevice.IEEEAddr, enddevice.NwkAddr)

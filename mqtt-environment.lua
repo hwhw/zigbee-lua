@@ -1,10 +1,10 @@
+#!/usr/bin/env -S luajit
 -- example environment that will forward any received zigbee packet
 -- to an MQTT broker
 --
 -- you may want to adapt this to extract the information (and packets)
 -- you are really interested in...
-
-local ctx = require"lib.ctx"
+require"lib.ctx"(require"config", function(ctx)
 local U = require"lib.util"
 local json = require"lib.json-lua.json"
 local aqaracodec=require"interfaces.zigbee.xiaomi-aqara""AqaraReport"
@@ -60,3 +60,5 @@ ctx.task{name="mqtt_permit_join",function()
     ctx:fire({"Zigbee","permit_join"},{include={0xfffc}})
   end
 end}
+
+end)
