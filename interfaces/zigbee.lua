@@ -316,6 +316,16 @@ function zigbee:init()
       -- TODO: exit from another thread, better just send an event
       os.exit(1)
     end
+
+    if self.dongle.route_discovery_request and self.send_many_to_one_route_requests then
+      ctx.task{function()
+        while true do
+          U.DEBUG(z, "send many to one route request")
+          ctx:sleep(self.send_many_to_one_route_requests + math.random())
+          self.dongle:route_discovery_request()
+        end
+      end}
+    end
   end}
   -- provisioning for newly announced devices
   ctx.task{name="zigbee_announce_listener", function()

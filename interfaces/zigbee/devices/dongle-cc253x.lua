@@ -291,6 +291,15 @@ function dongle:tx(p, waitconfirm)
   return ok
 end
 
+function dongle:route_discovery_request(dst, options, radius)
+  -- default to send a many-to-one route request message
+  return self:sreq("ZDO_EXT_ROUTE_DISC", {
+    DestinationAddress = dst or 0xFFFC,
+    Options = options or 0x03,
+    Radius = radius or 3
+  })
+end
+
 function dongle:get_ieeeaddr(nwk)
   U.INFO(self.subsys, "looking up IEEEAddr for NWK addr %04x", nwk)
   local ok, res = self:sreq("UTIL_ADDRMGR_NWK_ADDR_LOOKUP", {NwkAddr=nwk})
