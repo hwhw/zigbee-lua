@@ -39,7 +39,12 @@ return {
           network_key = {1,3,5,7,9,11,13,15,0,2,4,6,8,10,12,13}
         },
 --]]
-        device_database = "device_database.json"
+        device_database = "device_database.json",
+
+        -- set this (to a number value indicating the interval in seconds)) to send many-to-one
+        -- route requests to make devices (i.e. routers) aware how to send data to the central
+        -- coordinator (implemented only on cc253x for now):
+        send_many_to_one_route_requests = 15
       }
     }
   },
