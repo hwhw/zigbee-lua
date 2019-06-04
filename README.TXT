@@ -6,7 +6,7 @@ Supposed to run via LuaJIT (uses ffi, bitop)
 
 Supported Zigbee interfaces:
 * CC253x via ZNP
-* ETRX3 series
+* ETRX3 series (probably broken ATM)
 
 Features:
 * start up a Zigbee coordinator
@@ -14,11 +14,16 @@ Features:
 * TCP interface for injecting code into the running instance
 * MQTT client that allows for publishing/subscribing (still rough around
   the edges, see mqtt-environment.lua for a very basic example)
+* HTTP server via libmicrohttpd
 * ZCL abstraction to build/parse data packages
+* ZLL touchlink factory reset (implemented on CC253x for now, still problems
+  with sweeping over many channels - but working successfully for my Hue
+  lightbulbs)
 
 Device related notes:
 * CC253x: testing is done using the CC253x firmware from zigbee2mqtt project
-* ETRX3: interfacing using the AT command set, tested with firmware R309
+* ETRX3: interfacing using the AT command set, tested with firmware R309,
+  possibly broken at the moment until latest set of changes are implemented
 
 Status: It's operational. You can use this to run a Zigbee coordinator and
 control its communication. Via the TCP interface, you can control its behaviour
@@ -37,13 +42,14 @@ Description of software structure:
     copies and more
   * srv-epoll.lua is a epoll-based (and thus: Linux specific) wrapper around
     socket management. This would have to be reimplemented on other platforms.
-    It also implements a main loop.
+    It also implements a main loop which is used from ctx.lua
   * serial.lua is a ljsyscall based wrapper for serial/UART communication
   * codec.lua is a generic binary protocol codec, configured by simple Lua
     data structures.
 
 * Interfaces (in interfaces/):
-  * These will get loaded depending on configuration (in config.lua)
+  * These will get loaded depending on configuration (in config.lua, or whatever
+    you include in its place)
   * Noteworthy interface is the "zigbee" interface. There is a try to separate
     the protocol stuff (interfaces/zigbee.lua, interfaces/zigbee/zcl.lua)
     from device-/cluster-specific code
@@ -72,9 +78,8 @@ use this software for other tasks, too.
   * ETRX3 based hardware: should already have firmware
 3. optional: configure USB serial interface permissions
    This might be your chance to look and see what udev is and can do for you
-4. edit/adapt config.lua
-5. run main.lua via LuaJIT, optionally giving the name (without .lua suffix)
-   of an "environment" as additional argument.
+4. edit/adapt config.lua or integrate it into your own "environment" definition
+5. Run an "environment" that will itself call out to lib/ctx.lua
 
 Then:
 
