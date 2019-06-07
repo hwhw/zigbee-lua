@@ -79,16 +79,19 @@ local function send_response(connection, msg)
   local r
   if type(msg.data) == "string" then
     r = M.MHD_create_response_from_buffer(#msg.data, ffi.cast("uint8_t*", msg.data), M.MHD_RESPMEM_MUST_COPY)
-  else
+  elseif msg.response then
     r = msg.response
+  else
+    r = M.MHD_create_response_from_buffer(0, nil, M.MHD_RESPMEM_PERSISTENT)
   end
-  if r then
-    for key, value in pairs(msg.headers) do
-      M.MHD_add_response_header(r, tostring(key), tostring(value))
-    end
-    M.MHD_queue_response(connection, msg.code, r)
-    M.MHD_destroy_response(r)
+  if not r then
+    error("no response created")
   end
+  for key, value in pairs(msg.headers) do
+    M.MHD_add_response_header(r, tostring(key), tostring(value))
+  end
+  M.MHD_queue_response(connection, msg.code, r)
+  M.MHD_destroy_response(r)
 end
 function httpd:add_handler(method_match, url_match, callback)
   local id = tostring(callback)
@@ -203,7 +206,7 @@ function httpd:add_handler(method_match, url_match, callback)
 end
 
 local function default_filter(filename)
-  if string.match(filename, '\\.\\.') then
+  if string.match(filename, '%.%.') then
     return false
   end
   return true
@@ -212,14 +215,14 @@ local function default_headers(filename)
   local headers = {
     ["Cache-Control"] = "max-age: 604800", -- a week
   }
-  local ext = string.match(filename, '\\.([0-9A-Za-z_]+)$')
+  local ext = string.match(filename, '%.([0-9A-Za-z_]+)$')
   local ct = "application/octet-stream"
   if ext then
     ext = string.lower(ext)
     if ext == "txt" then
-      ct = "text/plain"
+      ct = "text/plain; charset=utf-8"
     elseif ext == "htm" or ext == "html" then
-      ct = "text/html"
+      ct = "text/html; charset=utf-8"
     elseif ext == "jpg" or ext == "jpeg" then
       ct = "image/jpeg"
     elseif ext == "png" then
