@@ -76,15 +76,24 @@ local function send_response(connection, msg)
   msg.code = msg.code or 200
   msg.headers = msg.headers or {}
   msg.headers["Content-Type"] = msg.headers["Content-Type"] or "text/html"
-  local r = M.MHD_create_response_from_buffer(#msg.data, ffi.cast("uint8_t*", msg.data), M.MHD_RESPMEM_MUST_COPY);
-  for key, value in pairs(msg.headers) do
-    M.MHD_add_response_header(r, tostring(key), tostring(value))
+  local r
+  if type(msg.data) == "string" then
+    r = M.MHD_create_response_from_buffer(#msg.data, ffi.cast("uint8_t*", msg.data), M.MHD_RESPMEM_MUST_COPY)
+  else
+    r = msg.response
   end
-  M.MHD_queue_response(connection, msg.code, r)
-  M.MHD_destroy_response(r)
+  if r then
+    for key, value in pairs(msg.headers) do
+      M.MHD_add_response_header(r, tostring(key), tostring(value))
+    end
+    M.MHD_queue_response(connection, msg.code, r)
+    M.MHD_destroy_response(r)
+  end
 end
 function httpd:add_handler(method_match, url_match, callback)
-  self.handler[callback] = {
+  local id = tostring(callback)
+  table.insert(self.handler, {
+    id = id,
     match = function(method, url)
       if method ~= method_match then return end
       return string.match(url, url_match)
@@ -189,8 +198,107 @@ function httpd:add_handler(method_match, url_match, callback)
       end
       return 1
     end
+  })
+  return id
+end
+
+local function default_filter(filename)
+  if string.match(filename, '\\.\\.') then
+    return false
+  end
+  return true
+end
+local function default_headers(filename)
+  local headers = {
+    ["Cache-Control"] = "max-age: 604800", -- a week
   }
-  return callback
+  local ext = string.match(filename, '\\.([0-9A-Za-z_]+)$')
+  local ct = "application/octet-stream"
+  if ext then
+    ext = string.lower(ext)
+    if ext == "txt" then
+      ct = "text/plain"
+    elseif ext == "htm" or ext == "html" then
+      ct = "text/html"
+    elseif ext == "jpg" or ext == "jpeg" then
+      ct = "image/jpeg"
+    elseif ext == "png" then
+      ct = "image/png"
+    elseif ext == "gif" then
+      ct = "image/gif"
+    elseif ext == "ico" then
+      ct = "image/x-icon"
+    elseif ext == "svg" then
+      ct = "image/svg+xml"
+    elseif ext == "css" then
+      ct = "text/css"
+    elseif ext == "js" then
+      ct = "text/javascript"
+    elseif ext == "json" then
+      ct = "application/json"
+    elseif ext == "pdf" then
+      ct = "application/pdf"
+    elseif ext == "xml" then
+      ct = "text/xml"
+    elseif ext == "zip" then
+      ct = "application/zip"
+    end
+  end
+  headers["Content-Type"] = ct
+  return headers
+end
+function httpd:add_static_file_handler(url_match, path, header_callback, filter)
+  local id = 'static_' .. path
+  table.insert(self.handler, {
+    id = id,
+    match = function(method, url)
+      if method ~= "GET" then return end
+      return string.match(url, url_match)
+    end,
+    callback = function(connection, params, url, method, version, upload_data, upload_data_size, ptr)
+      -- params[1] shall be the file path
+      local allowed = false
+      if filter == nil then allowed = default_filter(params[1]) end
+      if type(filter) == "function" then allowed = filter(params[1]) end
+      if not allowed then
+        send_response(connection, { code = 403, data = "forbidden" })
+        return 1
+      end
+      local fname = path .. '/' .. params[1]
+      local s, err = S.stat(fname)
+      local f
+      if not err then
+        f, err = S.open(fname, 'rdonly')
+      end
+      if err then
+        if err.NOENT then
+          send_response(connection, { code = 404, data = "not found" })
+        else
+          send_response(connection, { code = 403, data = "forbidden" })
+        end
+        return 1
+      end
+      f:nogc()
+      send_response(connection, {
+        code = 200,
+        response = M.MHD_create_response_from_fd(s.size, f:getfd()),
+        headers = (type(header_callback) == "function" and header_callback(params[1])) or
+          (header_callback == nil and default_headers(params[1]))
+      })
+      return 1
+    end
+  })
+  return id
+end
+
+function httpd:remove_handler(id)
+  for k, v in ipairs(self.handler) do
+    if v.id == id then
+      table.remove(self.handler, k)
+      return true
+    end
+  end
+  return false
 end
 
 function httpd:init()
