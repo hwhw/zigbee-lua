@@ -467,8 +467,6 @@ function dongle:initialize_coordinator(reset_conf)
     or not self:subscribe("MT_SYS", true)
     or not self:subscribe("MT_DEBUG", true)
     or not check_ok(self:sreq("ZDO_STARTUP_FROM_APP",nil,30))
-    -- does this make any sense?:
-    or not check_ok(self:sreq("ZDO_END_DEVICE_ANNCE", {NwkAddr=0, IEEEAddr=extaddr, Capabilities={"ZigbeeRouter","MainPowered","ReceiverOnWhenIdle","AllocateShortAddress"}}))
     -- standard HA profile endpoint:
     or not check_ok(self:sreq("AF_REGISTER", {EndPoint=1, AppProfId=0x104, AppDeviceId=5, AddDevVer=0, LatencyReq={"NoLatency"}, AppInClusterList={6}, AppOutClusterList={6}}))
     -- endpoint for ZLL commissioning:
