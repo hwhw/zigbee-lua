@@ -27,7 +27,10 @@ Device related notes:
 
 Status: It's operational. You can use this to run a Zigbee coordinator and
 control its communication. Via the TCP interface, you can control its behaviour
-and e.g. send adhoc custom packages.
+and e.g. send adhoc custom packages. Best results are currently archieved
+using a CC2538 device. CC2530/31 are working, too - they have difficulties
+dealing with larger networks due to their extremely limited CPU and memory
+resources, though.
 
 
 Description of software structure:
