@@ -20,24 +20,24 @@ local poll = {
     }
     return setmetatable(epollsrv, {__index = this})
   end,
-	event = S.t.epoll_event(),
-	add = function(this, s, events, callbacks)
-		local E = {
+  event = S.t.epoll_event(),
+  add = function(this, s, events, callbacks)
+    local E = {
       socket = s,
       event = S.t.epoll_event(),
     }
     callbacks.__index = callbacks
     setmetatable(E, callbacks)
-		E.event.events = events or S.c.EPOLL.IN
-		E.event.data.fd = type(s)=="number" and s or s:getfd()
-		U.assert(this.fd:epoll_ctl("add", s, E.event))
+    E.event.events = events or S.c.EPOLL.IN
+    E.event.data.fd = type(s)=="number" and s or s:getfd()
+    U.assert(this.fd:epoll_ctl("add", s, E.event))
     U.DEBUG("srv", "added FD %d to epoll group", E.event.data.fd)
     if E.worker then E:worker() end
     this.fds[E.event.data.fd] = E
-	end,
-	del = function(this, s)
+  end,
+  del = function(this, s)
     local fd = type(s)=="number" and s or s:getfd()
-		local E = this.fds[fd]
+    local E = this.fds[fd]
     if E then
       U.assert(this.fd:epoll_ctl("del", s, E.event))
       this.fds[fd] = nil
@@ -45,17 +45,17 @@ local poll = {
     else
       U.ERR("srv", "cannot remove socket %d from epoll group, no entry", fd)
     end
-	end,
-	events = S.t.epoll_events(maxevents),
-	get = function(this, timeout)
-		local f, a, r = this.fd:epoll_wait(this.events, timeout)
-		if not f then
-			U.ERR("srv", "error on fd: %s\n", a)
-			return nilf
-		else
-			return f, a, r
-		end
-	end,
+  end,
+  events = S.t.epoll_events(maxevents),
+  get = function(this, timeout)
+    local f, a, r = this.fd:epoll_wait(this.events, timeout)
+    if not f then
+      U.ERR("srv", "error on fd: %s\n", a)
+      return nilf
+    else
+      return f, a, r
+    end
+  end,
   register_before_wait = function(this, cb)
     this.before_wait = this.before_wait or {}
     this.before_wait[cb] = cb

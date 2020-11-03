@@ -5,8 +5,8 @@ local bit = require"bit"
 -- the normal Lua assert, except that the normal one does not do
 -- the tostring() step
 function util.assert(cond, s, ...)
-	if not cond then error(tostring(s)) end
-	return cond, s, ...
+  if not cond then error(tostring(s)) end
+  return cond, s, ...
 end
 
 -- logging:
