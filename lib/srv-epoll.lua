@@ -25,12 +25,14 @@ local poll = {
 		local E = {
       socket = s,
       event = S.t.epoll_event(),
-      cb = callbacks
     }
+    callbacks.__index = callbacks
+    setmetatable(E, callbacks)
 		E.event.events = events or S.c.EPOLL.IN
 		E.event.data.fd = type(s)=="number" and s or s:getfd()
 		U.assert(this.fd:epoll_ctl("add", s, E.event))
     U.DEBUG("srv", "added FD %d to epoll group", E.event.data.fd)
+    if E.worker then E:worker() end
     this.fds[E.event.data.fd] = E
 	end,
 	del = function(this, s)
@@ -76,11 +78,11 @@ local poll = {
         if E then
           if ev.HUP or ev.ERR or ev.RDHUP then
             U.DEBUG("srv", "FD %d has error/HUP condition, cleaning up", ev.fd)
-            if E.cb.on_error then E.cb.on_error(E) end
+            if E.on_error then E:on_error() end
             this.del(this, E.socket)
             E.socket:close()
-          elseif ev.IN and E.cb.on_readable then E.cb.on_readable(E)
-          elseif ev.OUT and E.cb.on_writable then E.cb.on_writable(E)
+          elseif ev.IN and E.on_readable then E:on_readable()
+          elseif ev.OUT and E.on_writable then E:on_writable()
           end
         end
       end

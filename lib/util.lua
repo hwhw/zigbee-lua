@@ -150,6 +150,38 @@ function util.hexdump(buffer)
   return table.concat(acc)
 end
 
+function util.line_reader(provider, line_end, return_last_partial)
+  local buf = provider()
+  local done = false
+  return function(force_done)
+    if force_done then done = true end
+    if done then
+      local ret = buf or provider()
+      if buf then buf = nil end
+      return ret
+    end
+    if not buf then return end
+    local ret
+    while true do
+      local l_start, l_end = string.find(buf, line_end or "\r\n", 1, true)
+      if l_start then
+        ret = string.sub(buf, 1, l_start-1)
+        buf = string.sub(buf, l_end+1)
+        break
+      else
+        local next_buf = provider()
+        if not next_buf then
+          ret = return_last_partial and buf
+          done = true
+          break
+        end
+        buf = buf .. next_buf
+      end
+    end
+    return ret
+  end
+end
+
 util.object = {}
 function util.object:new(o)
   o = o or {}
