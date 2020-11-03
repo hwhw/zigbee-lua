@@ -44,7 +44,6 @@ function httpd:remove_handler(id)
 end
 
 function httpd_connection:on_readable()
-  print("XXX")
   local fd = self.socket:getfd()
   if fd < 0 then return end
   local n, err = self.socket:read(buf, bufsize)
@@ -173,8 +172,9 @@ function httpd_connection:worker()
         end
       end
       U.DEBUG(self.id, "read POST body of %d bytes", post_length)
-      if http_headers["Content-Type"] == "application/x-www-form-urlencoded" then
+      if string.match(http_headers["Content-Type"], "^application/x%-www%-form%-urlencoded") then
         post_arguments = decode_url_params(post_body)
+        U.DEBUG(self.id, "POST form data:\n%s\n", U.dump(post_arguments))
       else
         post_arguments = { __unparsed = post_body }
       end
@@ -187,7 +187,7 @@ function httpd_connection:worker()
           local ok, msg = xpcall(h.callback, debug.traceback, params, get_arguments, post_arguments, http_headers, uri, method)
           if not ok then
             U.ERR(self.id, "error while handling request: %s", tostring(msg))
-            self:send_error(500, "Internal Server Error")
+            return self:send_error(500, "Internal Server Error")
           else
             if type(msg) == "string" then msg = {data = msg} end
             if type(msg) ~= "table" then return self:send_error(500, "Internal Server Error") end
