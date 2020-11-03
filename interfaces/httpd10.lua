@@ -6,18 +6,18 @@ local S = require"lib.ljsyscall"
 
 local httpd_connection = U.object:new()
 
-local httpd = U.object:new()
+local httpd = U.object:new{
+  host="127.0.0.1",
+  port=80,
+  timeout=5,
+  handler={}
+}
 
 local bufsize = 1024
 local buf = S.t.buffer(bufsize)
 
 function httpd:init()
-  self.host = self.host or "127.0.0.1"
-  self.port = self.port or 80
-  self.handler = self.handler or {}
-
   local connection = httpd_connection:new{httpd=self}
-
   self.srv = ctx.srv:tcp_server(self.host, self.port, connection)
   return self
 end
@@ -115,7 +115,14 @@ function httpd_connection:worker()
   self.id = {"httpd_connection", tostring(self)}
   U.INFO(self.id, "new connection")
   ctx.task{name="httpd_worker", function()
-    local L = U.line_reader(function() local ok, data = ctx:wait(self.id); return data end)
+    local L = U.line_reader(function()
+      local ok, data = ctx:wait(self.id, false, self.httpd.timeout)
+      if not ok then
+        U.INFO(self.id, "timeout or connection error")
+        return self:shutdown()
+      end
+      return data
+    end)
     local request = L()
     if not request then self:shutdown() return end
     local uri09 = string.match(request, "^GET ([^ ]+)$")
