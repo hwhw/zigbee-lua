@@ -107,7 +107,7 @@ local http_reason = {
 local function decode_url_params(str)
   local p = {}
   for k, v in string.gmatch(str, "([^=]+)=([^&]*)[&]?") do
-    p[k] = string.gsub(v, "%%([0-9a-fA-F]{2})", function(hex) return string.char(tonumber(hex, 16)) end)
+    p[k] = string.gsub(string.gsub(v, "%+", " "), "%%([0-9a-fA-F]{2})", function(hex) return string.char(tonumber(hex, 16)) end)
   end
   return p
 end
