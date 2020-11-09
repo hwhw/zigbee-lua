@@ -201,17 +201,31 @@ function dongle:init()
         data.duration = data.duration or 0xFE
 
         for _, devaddr in ipairs(data.include) do
-          local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
-          local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=data.duration,TCSignificance=1}))
-          if not ok then
-            U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
+          if data.zdo_mode then
+            local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
+            local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=data.duration,TCSignificance=1}))
+            if not ok then
+              U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
+            end
+          else
+            local ok, _ = check_ok(self:sreq("ZB_PERMIT_JOINING_REQUEST", {Destination=devaddr, Timeout=data.duration}))
+            if not ok then
+              U.ERR(self.subsys, "error issuing ZB_PERMIT_JOINING_REQUEST for devaddr %04x", devaddr)
+            end
           end
         end
         for _, devaddr in ipairs(data.exclude) do
-          local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
-          local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=0,TCSignificance=0}))
-          if not ok then
-            U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
+          if data.zdo_mode then
+            local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
+            local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=0,TCSignificance=0}))
+            if not ok then
+              U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
+            end
+          else
+            local ok, _ = check_ok(self:sreq("ZB_PERMIT_JOINING_REQUEST", {Destination=devaddr, Timeout=0}))
+            if not ok then
+              U.ERR(self.subsys, "error issuing ZB_PERMIT_JOINING_REQUEST for devaddr %04x", devaddr)
+            end
           end
         end
       end
@@ -244,6 +258,7 @@ function dongle:tx(p, waitconfirm)
   local ok = false
   if p.skip_routing then table.insert(options, "SkipRouting") end
   if p.request_ack then table.insert(options, "APSACK") end
+  if p.discover_route then table.insert(options, "DiscoverRoute") end
   if p.broadcast or p.groupcast or type(p.dst)=="string" then
     ok = self:sreq("AF_DATA_REQUEST_EXT", {
       DstAddrMode = p.broadcast and "AddrBroadcast" or p.groupcast and "AddrGroup" or type(p.dst)=="string" and "Addr64Bit" or "Addr16Bit",
@@ -429,6 +444,15 @@ function dongle:subscribe(subsys, enable)
   return U.INFO(self.subsys, "%s to %s events", enable and "subscribed" or "unsubscribed", subsys)
 end
 
+function dongle:dump_nvram()
+  local nvram = {}
+  for id=0, 0xFFFF do
+    local ok, result = check_ok(self:sreq("SYS_OSAL_NV_READ", {Id=id, Offset=0}))
+    if ok then nvram[id] = result.Value end
+  end
+  return nvram
+end
+
 function dongle:initialize_coordinator(reset_conf)
   if not self:reset()
     or not self:version_check()
@@ -437,6 +461,9 @@ function dongle:initialize_coordinator(reset_conf)
     return U.ERR(self.subsys, "error initializing")
   end
 
+  if self.set_ieeeaddr and not self:conf_check(0x01, U.reverse(U.fromhex(self.set_ieeeaddr)), reset_conf) then
+    return U.ERR(self.subsys, "cannot set IEEEAddr")
+  end
   local ok, extaddr = self:sreq("SYS_GET_EXTADDR")
   if not ok then
     return U.ERR(self.subsys, "cannot read external address")
@@ -459,6 +486,7 @@ function dongle:initialize_coordinator(reset_conf)
       bit.band(bit.rshift(channelmask, 24), 0xFF)}, reset_conf)
     or not self:conf_check(0x8F, {1}, reset_conf) -- ZDO direct cb
     or not self:conf_check(0x64, {1}, reset_conf) -- enable security
+    or not self:conf_check(0x65, {1}, reset_conf) -- secure permit join
     or not self:reset()
     or not self:subscribe("MT_AF", true)
     or not self:subscribe("MT_UTIL", true)
