@@ -29,6 +29,7 @@ function device_mt:tx_zcl(msg)
       U.ERR(z, "could not encode ZCL data, error: %s", frame)
     else
       local source_route
+      local discover_route = true
       if self.source_route then
         source_route = {}
         for _, d in ipairs(self.source_route) do
@@ -40,10 +41,12 @@ function device_mt:tx_zcl(msg)
           U.DEBUG(z, "source routing via %04X (%s)", route_dev.nwkaddr, route_dev.name)
           table.insert(source_route, route_dev.nwkaddr)
         end
+        discover_route = false
       end
       local ok = self.interface.dongle:tx({
         dst = self.nwkaddr,
         source_route = source_route,
+        discover_route = discover_route,
         dst_ep = dst_ep,
         src_ep = 1, -- TODO: make this flexible?
         clusterid = msg.cluster,
