@@ -11,10 +11,9 @@ local txseqs={}
 function zcl:send_af(cluster, data, global, waitreply, retries)
   retries = retries or 1
   local ok, msg
+  local txseq = ((txseqs[self.device] or 0) + 1) % 256
+  txseqs[self.device] = txseq
   for retry=1,retries do
-    local txseq = ((txseqs[self.device] or 0) + 1) % 256
-    txseqs[self.device] = txseq
-
     data.FrameControl = { global and "FrameTypeGlobal" or "FrameTypeLocal", "DirectionToServer" }
     if not waitreply then table.insert(data.FrameControl, "DisableDefaultResponse") end
     data.TransactionSequenceNumber = txseq
