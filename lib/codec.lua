@@ -323,6 +323,28 @@ local t_U48 = t_uint:new{bytes=6}
 local t_U56 = t_uint:new{bytes=7}
 local t_U64 = t_uint:new{bytes=8}
 
+local t_bitfield = def:new()
+function t_bitfield:encode(o, ctx, putc, root)
+  assert(o[self.name], "no value for "..self.name)
+  local type = self.type or t_U8
+  local v = 0
+  local l = 0
+  for _,p in ipairs(self.parts) do
+    v = bit.bor(v, bit.lshift(o[self.name][p[1]] or p.default or 0, l))
+    l = l + p.length
+  end
+  type:put(v, putc)
+end
+function t_bitfield:decode(getc, ctx, o, root)
+  o[self.name] = {}
+  local v = (self.type or t_U8):get(getc)
+  local l = 0
+  for _,p in ipairs(self.parts) do
+    o[self.name][p[1]] = bit.band(bit.rshift(v, l), bit.rshift(0xFFFFFFFF, 32-p.length))
+    l = l + p.length
+  end
+end
+
 -- abstract for floats/doubles
 local t_float = t_primitive:new{size=4,type="float"}
 function t_float:put(v, putc)
@@ -337,6 +359,27 @@ function t_float:get(getc)
 end
 local t_double = t_float:new{size=8,type="double"}
 
+-- variable length integers
+local t_varint = t_primitive:new()
+function t_varint:put(v, putc)
+  repeat
+    local b = v % 128
+    v = math.floor(v / 128)
+    if v>0 then b = b + 128 end
+    putc(b)
+  until v==0
+end
+function t_varint:get(getc)
+  local mul = 1
+  local v = 0
+  repeat
+    local b = getc()
+    v = v + (b % 128) * mul
+    mul = mul * 128
+  until b < 128
+  return v
+end
+
 -- parse codec definition
 local function create(typeobj) return function(...) return typeobj:create(...) end end
 local function parse(deffun)
@@ -348,6 +391,8 @@ local function parse(deffun)
     t_U8 = t_U8, t_U16 = t_U16, t_U32 = t_U32, t_U40 = t_U40, t_U48 = t_U48, t_U56 = t_U56, t_U64 = t_U64,
     t_I8 = t_I8, t_I16 = t_I16, t_I32 = t_I32, t_I40 = t_I40, t_I48 = t_I48, t_I56 = t_I56, t_I64 = t_I64,
     t_U16r = t_U16r,
+    t_varint = t_varint,
+    t_bitfield = t_bitfield,
     -- utility functions
     B = U.B, contains = U.contains, contains_all = U.contains_all,
     U = U, print=print, ipairs=ipairs, unpack=unpack,
@@ -365,6 +410,8 @@ local function parse(deffun)
     I8 = create(t_I8), I16 = create(t_I16), I24 = create(t_I24), I32 = create(t_I32),
     I40 = create(t_I40), I48 = create(t_I48), I56 = create(t_I56), I64 = create(t_I64),
     U16r = create(t_U16r),
+    varint = create(t_varint),
+    bitfield = create(t_bitfield),
   }
 
   setfenv(deffun, ctx)()
