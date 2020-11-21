@@ -132,10 +132,19 @@ function t_map:encode(o, ctx, putc, root)
       if name==v then ret = bit.bor(ret, value) end
     end
   end
-  self.type:put(ret, putc)
+  if self.type and putc then
+    self.type:put(ret, putc)
+  else
+    return ret
+  end
 end
 function t_map:decode(getc, ctx, o, root)
-  local v = self.type:get(getc)
+  local v
+  if self.type then
+    v = self.type:get(getc)
+  else
+    v = getc
+  end
   local ret = {}
   for name, value, mask in self:iter() do
     if bit.band(v, mask)==value then table.insert(ret, name) end
@@ -153,7 +162,8 @@ end
 --   reversing of the values
 local t_arr = def:new()
 function t_arr:encode(o, ctx, putc, root)
-  local v=assert(o[self.name], "no value for "..self.name)
+  local v=o[self.name] or self.const or self.default
+  assert(v, "no value for "..self.name)
   if type(v)=="string" then
     v = self.ashex and U.fromhex(v) or {string.byte(v,1,#v)}
   end
@@ -221,10 +231,21 @@ local t_bool = def:new()
 function t_bool:encode(o, ctx, putc, root)
   o[self.name]=o[self.name] or self.default or self.const
   assert(not self.const or o[self.name]==self.const, "value not according to constant define")
-  putc(assert(o[self.name], "no value for "..self.name) and 1 or 0)
+  assert(type(o[self.name])~="bool", "no value for "..self.name)
+  local v = o[self.name] and 1 or 0
+  if putc then
+    putc(v)
+  else
+    return v
+  end
 end
 function t_bool:decode(getc, ctx, o, root)
-  local v = getc() == 1 and true or false
+  local v
+  if type(getc) == "function" then
+    v = getc() == 1 and true or false
+  else
+    v = getc == 1 and true or false
+  end
   assert(not self.const or v==self.const, "value not according to constant define")
   o[self.name] = v
 end
@@ -325,12 +346,18 @@ local t_U64 = t_uint:new{bytes=8}
 
 local t_bitfield = def:new()
 function t_bitfield:encode(o, ctx, putc, root)
-  assert(o[self.name], "no value for "..self.name)
   local type = self.type or t_U8
   local v = 0
   local l = 0
   for _,p in ipairs(self.parts) do
-    v = bit.bor(v, bit.lshift(o[self.name][p[1]] or p.default or 0, l))
+    local val
+    if p.encode then
+      val = p:encode(o[self.name], ctx, nil, root)
+    else
+      val = o[self.name][p[1]] or p.default or 0
+      assert(val, "no value for "..self.name)
+    end
+    v = bit.bor(v, bit.lshift(val, l))
     l = l + p.length
   end
   type:put(v, putc)
@@ -340,7 +367,12 @@ function t_bitfield:decode(getc, ctx, o, root)
   local v = (self.type or t_U8):get(getc)
   local l = 0
   for _,p in ipairs(self.parts) do
-    o[self.name][p[1]] = bit.band(bit.rshift(v, l), bit.rshift(0xFFFFFFFF, 32-p.length))
+    local val = bit.band(bit.rshift(v, l), bit.rshift(0xFFFFFFFF, 32-p.length))
+    if p.decode then
+      p:decode(val, ctx, o[self.name], root)
+    else
+      o[self.name][p[1]] = val
+    end
     l = l + p.length
   end
 end
@@ -393,6 +425,7 @@ local function parse(deffun)
     t_U16r = t_U16r,
     t_varint = t_varint,
     t_bitfield = t_bitfield,
+    t_bool = t_bool,
     -- utility functions
     B = U.B, contains = U.contains, contains_all = U.contains_all,
     U = U, print=print, ipairs=ipairs, unpack=unpack,
