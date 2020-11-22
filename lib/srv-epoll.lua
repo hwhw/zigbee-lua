@@ -94,6 +94,21 @@ assert(S.signal("pipe", "ign"))
 
 local srv = poll:new()
 
+function srv:tcp_client(address, port, callbacks)
+  local sock = U.assert(S.socket("inet", "stream"))
+  local sockaddr = U.assert(S.t.sockaddr_in(port, address))
+  U.assert(sock:connect(sockaddr))
+  self:add(sock, S.c.EPOLL.IN, callbacks)
+  return sock
+end
+
+function srv:udp_client(address, port)
+  local sock = U.assert(S.socket("inet", "dgram"))
+  local sockaddr = U.assert(S.t.sockaddr_in(port, address))
+  U.assert(sock:connect(sockaddr))
+  return sock
+end
+
 function srv:tcp_server(address, port, callbacks)
   local sock = U.assert(S.socket("inet", "stream, nonblock"))
   sock:setsockopt("socket", "reuseaddr", true)
