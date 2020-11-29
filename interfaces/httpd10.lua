@@ -183,7 +183,7 @@ function httpd_connection:worker()
         post_arguments = decode_url_params(post_body)
         U.DEBUG(self.id, "POST form data:\n%s\n", U.dump(post_arguments))
       else
-        post_arguments = { __unparsed = post_body }
+        post_arguments = { _unparsed = post_body }
       end
     end
 
