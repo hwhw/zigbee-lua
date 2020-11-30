@@ -33,6 +33,90 @@ function httpd:add_handler(method_match, url_match, callback)
   return id
 end
 
+local function default_filter(filename)
+  if string.match(filename, '%.%.') then
+    return false
+  end
+  return true
+end
+local function default_headers(filename)
+  local headers = {
+    ["Cache-Control"] = "max-age: 604800", -- a week
+  }
+  local ext = string.match(filename, '%.([0-9A-Za-z_]+)$')
+  local ct = "application/octet-stream"
+  if ext then
+    ext = string.lower(ext)
+    if ext == "txt" then
+      ct = "text/plain; charset=utf-8"
+    elseif ext == "htm" or ext == "html" then
+      ct = "text/html; charset=utf-8"
+    elseif ext == "jpg" or ext == "jpeg" then
+      ct = "image/jpeg"
+    elseif ext == "png" then
+      ct = "image/png"
+    elseif ext == "gif" then
+      ct = "image/gif"
+    elseif ext == "ico" then
+      ct = "image/x-icon"
+    elseif ext == "svg" then
+      ct = "image/svg+xml"
+    elseif ext == "css" then
+      ct = "text/css"
+    elseif ext == "js" then
+      ct = "text/javascript"
+    elseif ext == "json" then
+      ct = "application/json"
+    elseif ext == "pdf" then
+      ct = "application/pdf"
+    elseif ext == "xml" then
+      ct = "text/xml"
+    elseif ext == "zip" then
+      ct = "application/zip"
+    end
+  end
+  headers["Content-Type"] = ct
+  return headers
+end
+function httpd:add_static_file_handler(url_match, path, filter)
+  return self:add_handler("GET", url_match,
+    function(params, get_arguments, post_arguments, http_headers, uri, method)
+      -- params[1] shall be the file path
+      local allowed = false
+      if filter == nil then
+        allowed = default_filter(params[1])
+      elseif type(filter) == "function" then
+        allowed = filter(params[1])
+      end
+      if not allowed then return { code = 403, data = "forbidden" } end
+      local fname = params[1] and (path .. '/' .. params[1]) or path
+      local s, err = S.stat(fname)
+      local f
+      if not err then
+        f, err = S.open(fname, 'rdonly')
+      end
+      if err then
+        if err.NOENT then
+          return { code = 404, data = "not found" }
+        else
+          return { code = 403, data = "forbidden "..params[1] }
+        end
+      end
+      return { datasocket = f, headers = default_headers(fname) }
+    end
+  )
+end
+function httpd:add_redirect_handler(method_match, url_match, target, permanent)
+  return self:add_handler(method_match, url_match, function(params)
+    return {
+      code = permanent and 301 or 302,
+      headers = {
+        Location = string.gsub(params._uri, url_match, target)
+      }
+    }
+  end)
+end
+
 function httpd:remove_handler(id)
   for k, v in ipairs(self.handler) do
     if v.id == id then
@@ -191,6 +275,7 @@ function httpd_connection:worker()
       if method == h.method_match then
         local params = {string.match(uri, h.url_match)}
         if params[1] then
+          params._uri = uri
           local ok, msg = xpcall(h.callback, debug.traceback, params, get_arguments, post_arguments, http_headers, uri, method)
           if not ok then
             U.ERR(self.id, "error while handling request: %s", tostring(msg))
@@ -208,7 +293,12 @@ function httpd_connection:worker()
               self:write(string.format("%s: %s\r\n", k, v))
             end
             self:write("\r\n")
-            if(msg.data) then self:write(msg.data) end
+            if(msg.data) then
+              self:write(msg.data)
+            elseif(msg.datasocket) then
+              S.sendfile(self.socket:getfd(), msg.datasocket:getfd(), nil, 0x7FFFF000)
+              msg.datasocket:close()
+            end
             return self:shutdown()
           end
         end
