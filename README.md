@@ -1,29 +1,14 @@
-Zigbee-lua
+## Zigbee-lua
 
-A Zigbee control framework written in Lua
+A Zigbee control framework written in Lua.
 
-Supposed to run via LuaJIT (uses ffi, bitop)
+### Requirements
 
-Supported Zigbee interfaces:
-* CC253x via ZNP
-* ETRX3 series (probably broken ATM)
+* [LuaJIT](https://luajit.org/) (uses ffi, bitop)
+* [libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/)
+* [mosquitto](https://mosquitto.org/)
 
-Features:
-* start up a Zigbee coordinator
-* maintain a simple device database
-* TCP interface for injecting code into the running instance
-* MQTT client that allows for publishing/subscribing (still rough around
-  the edges, see mqtt-environment.lua for a very basic example)
-* HTTP server via libmicrohttpd
-* ZCL abstraction to build/parse data packages
-* ZLL touchlink factory reset (implemented on CC253x for now, still problems
-  with sweeping over many channels - but working successfully for my Hue
-  lightbulbs)
-
-Device related notes:
-* CC253x: testing is done using the CC253x firmware from zigbee2mqtt project
-* ETRX3: interfacing using the AT command set, tested with firmware R309,
-  possibly broken at the moment until latest set of changes are implemented
+### Supported devices
 
 Status: It's operational. You can use this to run a Zigbee coordinator and
 control its communication. Via the TCP interface, you can control its behaviour
@@ -32,38 +17,61 @@ using a CC2538 device. CC2530/31 are working, too - they have difficulties
 dealing with larger networks due to their extremely limited CPU and memory
 resources, though.
 
+Controllers:
 
-Description of software structure:
-----------------------------------
+* **CC253x** via ZNP. Status: CC253x: testing is done using the CC253x firmware
+from zigbee2mqtt project.
+* **ETRX3** series (probably broken ATM). Status: interfacing using the AT
+command set, tested with firmware R309, possibly broken at the moment until
+latest set of changes are implemented.
+
+Devices:
+
+* TBD
+
+### Features:
+
+* start up a Zigbee coordinator
+* maintain a simple device database
+* TCP interface for injecting code into the running instance
+* MQTT client that allows for publishing/subscribing (still rough around
+  the edges, see `mqtt-environment.lua` for a very basic example)
+* HTTP server via libmicrohttpd
+* ZCL abstraction to build/parse data packages
+* ZLL touchlink factory reset (implemented on CC253x for now, still problems
+  with sweeping over many channels - but working successfully for my Hue
+  lightbulbs)
+
+
+### Description of software structure
 
 * Core (in lib/):
-  * ctx.lua is a general application context. It is supposed to be the
+  * `ctx.lua` is a general application context. It is supposed to be the
     single instance of its kind. It implements:
     * coroutine based tasks integrated with
     * messaging between these tasks
-  * util.lua is a collection of small utility functions, e.g. logging, table
+  * `util.lua` is a collection of small utility functions, e.g. logging, table
     copies and more
-  * srv-epoll.lua is a epoll-based (and thus: Linux specific) wrapper around
+  * `srv-epoll.lua` is a epoll-based (and thus: Linux specific) wrapper around
     socket management. This would have to be reimplemented on other platforms.
-    It also implements a main loop which is used from ctx.lua
-  * serial.lua is a ljsyscall based wrapper for serial/UART communication
-  * codec.lua is a generic binary protocol codec, configured by simple Lua
+    It also implements a main loop which is used from `ctx.lua`.
+  * `serial.lua` is a ljsyscall based wrapper for serial/UART communication
+  * `codec.lua` is a generic binary protocol codec, configured by simple Lua
     data structures.
 
 * Interfaces (in interfaces/):
-  * These will get loaded depending on configuration (in config.lua, or whatever
+  * These will get loaded depending on configuration (in `config.lua`, or whatever
     you include in its place)
   * Noteworthy interface is the "zigbee" interface. There is a try to separate
-    the protocol stuff (interfaces/zigbee.lua, interfaces/zigbee/zcl.lua)
+    the protocol stuff (`interfaces/zigbee.lua`, `interfaces/zigbee/zcl.lua`)
     from device-/cluster-specific code
-  * The CC253x ZNP interface is in interfaces/zigbee/devices/dongle-cc253x.lua,
-    the ZNP protocol definition (using codec.lua) can be found in
-    interfaces/zigbee/cc-znp.lua
-  * The ETRX3 interface is in interfaces/zigbee/devices/dongle-etrx3.lua
+  * The CC253x ZNP interface is in `interfaces/zigbee/devices/dongle-cc253x.lua`,
+    the ZNP protocol definition (using `codec.lua`) can be found in
+    `interfaces/zigbee/cc-znp.lua`
+  * The ETRX3 interface is in `interfaces/zigbee/devices/dongle-etrx3.lua`
 
 
-Usage:
-------
+### Usage
 
 The following description assumes that you want to use this software to build
 a home automation infrastructure with Zigbee devices - which is what drove the
@@ -73,16 +81,18 @@ use this software for other tasks, too.
 1. Prepare software
   * check out the git submodules. You do not need luarocks or similar lua
     package management. Just do:
-    - git submodule init
-    - git submodule update
+    ```
+    $ git submodule init
+    $ git submodule update
+    ```
 2. Prepare hardware
   * CC253x: flash with appropriate firmware. See firmware remarks for a very
     subjective view on what you should use.
   * ETRX3 based hardware: should already have firmware
 3. optional: configure USB serial interface permissions
    This might be your chance to look and see what udev is and can do for you
-4. edit/adapt config.lua or integrate it into your own "environment" definition
-5. Run an "environment" that will itself call out to lib/ctx.lua
+4. edit/adapt `config.lua` or integrate it into your own "environment" definition
+5. Run an "environment" that will itself call out to `lib/ctx.lua`
 
 Then:
 
@@ -93,8 +103,7 @@ Then:
   directory.
 
 
-Similar projects:
------------------
+### Similar projects:
 
 When I started this whole smarthome project of mine, I had a loooong look at
 https://github.com/Koenkk/zigbee2mqtt - and I used it for a short amount of
@@ -137,8 +146,7 @@ I settled on this. Result is a very compact (in terms of lines of code)
 core that allows quite some flexibility.
 
 
-Road map:
----------
+### Roadmap:
 
 * Something to store/analyze sensor data (temperature & so on)
 * Better abstracted Zigbee device classes (rather than the "any.lua" which
