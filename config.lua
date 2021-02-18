@@ -30,8 +30,10 @@ return {
           -- you can set this to true to factory reset the dongle:
           factory_reset = false,
           ----------------------
-          -- the following settings will only be applied if no network is yet configured in the dongle:
-          pan_id = 0x1a65, -- warning: the module will check if a PAN with this ID exists and will generate a random PAN ID if that is the case
+          -- the following settings will only be applied if no network
+          -- is yet configured in the dongle:
+          pan_id = 0x1a65, -- warning: the module will check if a PAN with
+                           -- this ID exists and will generate a random PAN ID if that is the case
           -- you can give an explicit ext pan id, otherwise the coordinator's IEEEaddr is used
           ext_pan_id = "coordinator",
           channel = 15,
