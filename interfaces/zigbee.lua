@@ -314,7 +314,7 @@ function zigbee:init()
 
   -- run this in a task to allow it to suspend
   ctx.task{name="initialize", function()
-    if not self.dongle:initialize_coordinator(true) then
+    if not self.dongle:initialize_coordinator() then
       U.ERR("main", "could not start coordinator")
       -- TODO: exit from another thread, better just send an event
       os.exit(1)

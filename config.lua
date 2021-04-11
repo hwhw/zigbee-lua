@@ -20,7 +20,13 @@ return {
           ext_pan_id = "coordinator",
           channel = 11,
           -- network key defaults to zigbee2mqtt/zigbee-shepherd key, better change this!
-          network_key = {1,3,5,7,9,11,13,15,0,2,4,6,8,10,12,13}
+          network_key = {1,3,5,7,9,11,13,15,0,2,4,6,8,10,12,13},
+          -- comment this out to allow zigbee-lua to actually configure the device
+          -- this is a safety net to prevent you from factory-resetting your device
+          -- by accident:
+          never_reset = true
+          -- switch this to true to set new values:
+          --force_reset = true
         },
 --[[ example for ETRX3 dongle:
         device = {

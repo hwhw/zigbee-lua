@@ -201,31 +201,17 @@ function dongle:init()
         data.duration = data.duration or 0xFE
 
         for _, devaddr in ipairs(data.include) do
-          if data.zdo_mode then
-            local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
-            local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=data.duration,TCSignificance=1}))
-            if not ok then
-              U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
-            end
-          else
-            local ok, _ = check_ok(self:sreq("ZB_PERMIT_JOINING_REQUEST", {Destination=devaddr, Timeout=data.duration}))
-            if not ok then
-              U.ERR(self.subsys, "error issuing ZB_PERMIT_JOINING_REQUEST for devaddr %04x", devaddr)
-            end
+          local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
+          local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=data.duration,TCSignificance=1}))
+          if not ok then
+            U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
           end
         end
         for _, devaddr in ipairs(data.exclude) do
-          if data.zdo_mode then
-            local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
-            local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=0,TCSignificance=0}))
-            if not ok then
-              U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
-            end
-          else
-            local ok, _ = check_ok(self:sreq("ZB_PERMIT_JOINING_REQUEST", {Destination=devaddr, Timeout=0}))
-            if not ok then
-              U.ERR(self.subsys, "error issuing ZB_PERMIT_JOINING_REQUEST for devaddr %04x", devaddr)
-            end
+          local addrmode = (devaddr == 0xFFFF or devaddr == 0xFFFC) and 0xFF or 0x02
+          local ok, _ = check_ok(self:sreq("ZDO_MGMT_PERMIT_JOIN_REQ", {AddrMode=addrmode,DstAddr=devaddr,Duration=0,TCSignificance=0}))
+          if not ok then
+            U.ERR(self.subsys, "error sending ZDO_MGMT_PERMIT_JOIN_REQ to devaddr %04x", devaddr)
           end
         end
       end
@@ -403,27 +389,22 @@ function dongle:reset(retries)
     self:areq("SYS_RESET_REQ")
     local ok, r = ctx:wait({"CC-ZNP-MT", self, "AREQ_SYS_RESET_IND"}, nil, 60)
     if ok then
-      return U.INFO(self.subsys, "reset successful")
+      self.znpProduct = r.Product or 0; -- indicates ZNP / Stack version, 0: 1.2.x, 1: 3.x.0, 2: 3.0.x
+      return U.INFO(self.subsys, "reset successful, ZNP product ID: %d", self.znpProduct)
     end
   end
   return U.ERR(self.subsys, "could not reset dongle")
 end
 
-function dongle:conf_check(id, value, update)
-  local ok, d = check_ok(self:sreq("ZB_READ_CONFIGURATION", {ConfigId=id}))
-  if not ok then
-    return U.ERR(self.subsys, "error reading config id %04x", id)
-  end
-  if type(value)=="table" then value=string.char(unpack(value)) end
-  local current = string.char(unpack(d.Value))
-  if current~=value then
-    local _, msg = U.INFO(self.subsys, "config mismatch on id %04x, current:\n%sdesired:\n%s", id, U.hexdump(current), U.hexdump(value))
-    if not update then return false, msg end
-    if not check_ok(self:sreq("ZB_WRITE_CONFIGURATION", {ConfigId=id, Value=value})) then
-      return U.ERR(self.subsys, "config id %04x could not be set.", id)
-    end
-  end
-  return true
+function dongle:conf_get(id)
+  return check_ok(self:sreq("SYS_OSAL_NV_READ", {Id=id}))
+end
+function dongle:conf_set(id, value)
+  return check_ok(self:sreq("SYS_OSAL_NV_WRITE", {Id=id, Value=value}))
+end
+function dongle:conf_init(id, value)
+  local ok, res = check_ok(self:sreq("SYS_OSAL_NV_ITEM_INIT", {Id=id, ItemLen=#value, InitData=value}))
+  return ok or res.Status == 9, res
 end
 
 function dongle:version_check()
@@ -431,7 +412,7 @@ function dongle:version_check()
   if not ok then
     return U.ERR(self.subsys, "error waiting for ping reply")
   end
-  if not U.contains_all(info.Capabilities, {"MT_CAP_SYS", "MT_CAP_AF", "MT_CAP_ZDO", "MT_CAP_SAPI", "MT_CAP_UTIL"}) then
+  if not U.contains_all(info.Capabilities, {"MT_CAP_SYS", "MT_CAP_AF", "MT_CAP_ZDO", "MT_CAP_UTIL"}) then
     return U.ERR(self.subsys, "firmware does not support needed features")
   end
   return U.INFO(self.subsys, "firmware supports all needed features")
@@ -444,59 +425,75 @@ function dongle:subscribe(subsys, enable)
   return U.INFO(self.subsys, "%s to %s events", enable and "subscribed" or "unsubscribed", subsys)
 end
 
-function dongle:dump_nvram()
+function dongle:dump_nvram(from, to)
   local nvram = {}
-  for id=0, 0xFFFF do
-    local ok, result = check_ok(self:sreq("SYS_OSAL_NV_READ", {Id=id, Offset=0}))
+  for id=from or 0, to or 0xFFFF do
+    local ok, result = self:conf_get(id)
     if ok then nvram[id] = result.Value end
   end
   return nvram
 end
 
-function dongle:initialize_coordinator(reset_conf)
-  if not self:reset()
-    or not self:version_check()
-    or not self:conf_check(0x62, self.network_key, reset_conf) -- network key
-  then
-    return U.ERR(self.subsys, "error initializing")
-  end
-
-  if self.set_ieeeaddr and not self:conf_check(0x01, U.reverse(U.fromhex(self.set_ieeeaddr)), reset_conf) then
-    return U.ERR(self.subsys, "cannot set IEEEAddr")
-  end
+function dongle:get_extaddr()
   local ok, extaddr = self:sreq("SYS_GET_EXTADDR")
   if not ok then
     return U.ERR(self.subsys, "cannot read external address")
   end
-  local extaddr = extaddr.ExtAddress
+  return extaddr.ExtAddress
+end
 
-  -- TODO: handle wrong extaddr
+function dongle:initialize_coordinator()
+  if not self:reset()
+    or not self:version_check()
+  then
+    return U.ERR(self.subsys, "error initializing device")
+  end
 
-  local channelmask = bit.lshift(1, self.channel)
-  if not self:conf_check(0x87, {0}, reset_conf) -- logical type: coordinator
-    or not self:conf_check(0x83, 
-      {bit.band(self.pan_id, 0xFF), bit.rshift(self.pan_id, 8)}, reset_conf) -- PAN ID
-    or not self:conf_check(0x2D, 
-      (self.ext_pan_id=="coordinator") and U.reverse(U.fromhex(extaddr))
-      or U.reverse(U.fromhex(self.ext_pan_id)), reset_conf) -- extended PAN ID
-    or not self:conf_check(0x84, {
-      bit.band(channelmask, 0xFF),
-      bit.band(bit.rshift(channelmask, 8), 0xFF),
-      bit.band(bit.rshift(channelmask, 16), 0xFF),
-      bit.band(bit.rshift(channelmask, 24), 0xFF)}, reset_conf)
-    or not self:conf_check(0x8F, {1}, reset_conf) -- ZDO direct cb
-    or not self:conf_check(0x64, {1}, reset_conf) -- enable security
-    or not self:conf_check(0x65, {1}, reset_conf) -- secure permit join
-    or not self:reset()
-    or not self:subscribe("MT_AF", true)
+  -- we're using the IDs from zigbee2mqtt/zigbee-herdsman:
+  local is_initialized_id = (self.znpProduct == 0) and 3840 or 96
+  local ok, is_initialized = self:conf_get(is_initialized_id)
+  if (self.force_reset or (not ok or is_initialized.Value[1] ~= 0x55)) and not self.never_reset then
+    -- reset configuration values
+    local channelmask = bit.lshift(1, self.channel)
+    if not ( 
+      self:conf_set(0x03, {2})
+      and self:reset()
+      and self:conf_set(0x81, {0}) -- logical type: coordinator
+      and self:conf_set(0x83, {bit.band(self.pan_id, 0xFF), bit.rshift(self.pan_id, 8)}) -- PAN ID
+      and (not self.set_ieeeaddr or (self:conf_set(0x01, U.reverse(U.fromhex(self.set_ieeeaddr)))))
+      and self:conf_set(0x2D, 
+        (self.ext_pan_id=="coordinator")
+        and (self.set_ieeeaddr or U.reverse(U.fromhex(self:get_extaddr())))
+        or U.reverse(U.fromhex(self.ext_pan_id))) -- extended PAN ID
+      and self:conf_set(0x84, {bit.band(channelmask, 0xFF),
+        bit.band(bit.rshift(channelmask, 8), 0xFF),
+        bit.band(bit.rshift(channelmask, 16), 0xFF),
+        bit.band(bit.rshift(channelmask, 24), 0xFF)}) -- channel mask
+      and self:conf_set(0x8F, {1}) -- ZDO direct cb
+      and self:conf_set(0x64, {1}) -- enable security
+      and self:conf_set(0x65, {1}) -- secure permit join
+      and self:conf_set(0x62, self.network_key) -- network key
+      and self:conf_init(is_initialized_id, {0x55})
+      and self:reset()
+      ) then
+      return U.ERR(self.subsys, "error initializing device configuration")
+    end
+  end
+
+  if not self:subscribe("MT_AF", true)
     or not self:subscribe("MT_UTIL", true)
     or not self:subscribe("MT_ZDO", true)
-    or not self:subscribe("MT_SAPI", true)
     or not self:subscribe("MT_SYS", true)
     or not self:subscribe("MT_DEBUG", true)
     or not check_ok(self:sreq("ZDO_STARTUP_FROM_APP",nil,30))
     -- standard HA profile endpoint:
-    or not check_ok(self:sreq("AF_REGISTER", {EndPoint=1, AppProfId=0x104, AppDeviceId=5, AddDevVer=0, LatencyReq={"NoLatency"}, AppInClusterList={6}, AppOutClusterList={6}}))
+    or not check_ok(self:sreq("AF_REGISTER", {
+      EndPoint=1, AppProfId=0x104, AppDeviceId=5, AddDevVer=0, LatencyReq={"NoLatency"},
+      AppInClusterList={
+        0x0006, --OnOff
+        0x0008, --Level Control
+        0x0300, --Color Control
+      }, AppOutClusterList={6}}))
     -- endpoint for ZLL commissioning:
     or not check_ok(self:sreq("AF_REGISTER", {EndPoint=2, AppProfId=0xc05e, AppDeviceId=0x0840, AddDevVer=0, LatencyReq={"NoLatency"}, AppInClusterList={0x1000}, AppOutClusterList={0x1000}}))
     -- setup for ZLL commissioning endpoint as an InterPAN endpoint:
