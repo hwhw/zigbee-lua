@@ -125,10 +125,12 @@ local cmds={
   {"SRSP_SYS_NV_UPDATE", 0x6135, 0xFFFF},
   {"SREQ_SYS_NV_COMPACT", 0x2136, 0xFFFF},
   {"SRSP_SYS_NV_COMPACT", 0x6136, 0xFFFF},
+  --[[ conflicting with non-_EXT versions:
   {"SREQ_SYS_OSAL_NV_READ_EXT", 0x2108, 0xFFFF},
   {"SRSP_SYS_OSAL_NV_READ_EXT", 0x6108, 0xFFFF},
   {"SREQ_SYS_OSAL_NV_WRITE_EXT", 0x2109, 0xFFFF},
   {"SRSP_SYS_OSAL_NV_WRITE_EXT", 0x6109, 0xFFFF},
+  ]]
   {"AREQ_SYS_RESET_IND", 0x4180, 0xFFFF},
   {"AREQ_SYS_OSAL_TIMER_EXPIRED", 0x4181, 0xFFFF},
   {"SREQ_UTIL_GET_DEVICE_INFO", 0x2700, 0xFFFF},
@@ -971,6 +973,7 @@ msg{"SRSP_SYS_NV_COMPACT",
   U8  {"Status"}
 }
 
+--[[ -- conflicting with non-_EXT versions:
 msg{"SREQ_SYS_OSAL_NV_READ_EXT",
   U16 {"Id"},
   U16 {"Offset", default=0}
@@ -980,7 +983,6 @@ msg{"SRSP_SYS_OSAL_NV_READ_EXT",
   arr {"Value", type=t_U8, counter=t_U8}
 }
 
---[[ -- redundant with SYS_OSAL_NV_WRITE
 msg{"SREQ_SYS_OSAL_NV_WRITE_EXT",
   U16 {"Id"},
   U16 {"Offset", default=0},
