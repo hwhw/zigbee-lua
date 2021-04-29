@@ -31,6 +31,7 @@ ctx.task{name="mqtt_outgoing",function()
       and msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value
     then
       -- e.g. this is a special handling for Aqara proprietary data
+      -- luacheck: ignore
       local data = aqaracodec:decode({string.byte(msg.data.GeneralCommandFrame.ReportAttributes.AttributeReports[1].Attribute.Value,1,-1)})
       if data then
         local ok, msg_json = pcall(json.encode, data)
@@ -54,7 +55,8 @@ end}
 -- MQTT subscribing: We use this to open the network for joining
 M:subscribe("/zigbee-lua/permit_join")
 ctx.task{name="mqtt_permit_join",function()
-  for ok, msg in ctx:wait_all({"mqtt_client", "message"}, function(msg) return msg.topic == "/zigbee-lua/permit_join" end) do
+  for ok, msg in ctx:wait_all({"mqtt_client", "message"},
+                        function(msg) return msg.topic == "/zigbee-lua/permit_join" end) do
     U.DEBUG("mqtt_environment", "got permit_join message via MQTT, opening network for devices")
     -- TODO: timeout handling etc
     ctx:fire({"Zigbee","permit_join"},{include={0xfffc}})

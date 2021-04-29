@@ -64,9 +64,19 @@ local function get_cube_handler(dev)
       U.DEBUG("env", "locked new dev, level: %s, colors: %s", sets.level or "falsy", U.dump(sets.colors))
     elseif sets.dev and event == "roll" then
       if sets.what == "level" then
-        sets.what = sets.colors.capabilities[4] and "ctemp" or sets.colors.capabilities[1] and "eh" or sets.colors.capabilities[0] and "h" or "level"
+        sets.what = sets.colors.capabilities[4]
+                    and "ctemp"
+                    or sets.colors.capabilities[1]
+                    and "eh"
+                    or sets.colors.capabilities[0]
+                    and "h"
+                    or "level"
       elseif sets.what == "ctemp" then
-        sets.what = sets.colors.capabilities[1] and "eh" or sets.colors.capabilities[0] and "h" or "level"
+        sets.what = sets.colors.capabilities[1]
+                    and "eh"
+                    or sets.colors.capabilities[0]
+                    and "h"
+                    or "level"
       elseif sets.what == "eh" or sets.what == "h" then sets.what = "s"
       elseif sets.what == "s" then sets.what = "level"
       end
@@ -78,7 +88,11 @@ local function get_cube_handler(dev)
         sets.level = level
       elseif sets.what == "ctemp" then
         local ctemp = sets.colors.ctemp + (p1/180)*30
-        ctemp = (ctemp < sets.colors.ctemp_min) and sets.colors.ctemp_min or (ctemp > sets.colors.ctemp_max) and sets.colors.ctemp_max or ctemp
+        ctemp = (ctemp < sets.colors.ctemp_min)
+                and sets.colors.ctemp_min
+                or (ctemp > sets.colors.ctemp_max)
+                and sets.colors.ctemp_max
+                or ctemp
         sets.dev:ctemp(ctemp, 0)
         sets.colors.ctemp = ctemp
       elseif sets.what == "eh" then
@@ -112,8 +126,6 @@ E.b_kueche:on_button_press(function(btn, presses)
   if not this.state then
     local so = E.l_kueche_so:check_on_off()
     local no = E.l_kueche_no:check_on_off()
-    local sw = E.l_kueche_sw:check_on_off()
-    local nw = E.l_kueche_nw:check_on_off()
     this.state = 0
     if so then
       if no then
@@ -191,8 +203,8 @@ E.p_bad:on_occupancy(function()
   ctx.task(function()
     ctx:fire{"Env", E.p_bad}
     E.l_bad:switch"On"
-    local ok = ctx:wait({"Env", E.p_bad}, nil, 300)
-    if not ok then
+    local res = ctx:wait({"Env", E.p_bad}, nil, 300)
+    if not res then
       E.l_bad:switch"Off"
     end
   end)
@@ -246,7 +258,6 @@ E.s_eingang:on_button_press(function(btn, presses)
   local this = E.s_eingang
   if not this.state then
     local n = E.l_eingang_n:check_on_off()
-    local m = E.l_eingang_m:check_on_off()
     local s = E.l_eingang_s:check_on_off()
     this.state = 0
     if n then
@@ -330,7 +341,6 @@ local scenes={
     l_eingang_s={{"switch","Off"}},
     l_eingang_m={{"switch","On"},{"level",1},color_rnd},
     l_eingang_n={{"switch","On"},{"level",1},color_rnd},
-    l_treppe={{"switch","Off"}},
     l_gaeste={{"switch","Off"}},
     l_couch_fluter={{"switch","On"},{"level",5},color_rnd},
     l_couch_steh={{"switch","On"},{"level",5},color_rnd},
@@ -345,7 +355,6 @@ local scenes={
     l_eingang_s={{"switch","Off"}},
     l_eingang_m={{"switch","On"},{"level",1},{"hue_sat",0x0a,0xF0}},
     l_eingang_n={{"switch","On"},{"level",1},{"hue_sat",0x0a,0xF0}},
-    l_treppe={{"switch","Off"}},
     l_gaeste={{"switch","Off"}},
     l_couch_fluter={{"switch","On"},{"level",5},{"hue_sat",0xb0,0xFE}},
     l_couch_steh={{"switch","On"},{"level",5},{"hue_sat",0xfe,0xFE}},
@@ -375,7 +384,11 @@ E.b_switcher:on_button_press(function(btn, presses)
   end
 end)
 
-for _,v in ipairs{"cube_1","cube_2", "b_gaeste","s_og","b_couch","t_eg","b_bad","b_schlaf","s_kueche","p_bad","t_various","s_schlaf","b_kueche","t_schlaf","p_schlaf","s_eingang","b_switcher"} do
+for _,v in ipairs{"cube_1", "cube_2", "b_gaeste",
+                  "s_og", "b_couch", "t_eg", "b_bad",
+                  "b_schlaf", "s_kueche", "p_bad", "t_various",
+                  "s_schlaf", "b_kueche", "t_schlaf", "p_schlaf",
+                  "s_eingang", "b_switcher"} do
   E[v]:on_aqara_report(function (d)
     if d.ReportAttributes then
       for _, r in ipairs(d.ReportAttributes) do
@@ -411,7 +424,8 @@ end
 -- MQTT subscribing: We use this to open the network for joining
 M:subscribe("/zigbee-lua/permit_join")
 ctx.task{name="mqtt_permit_join",function()
-  for ok, msg in ctx:wait_all({"mqtt_client", "message"}, function(msg) return msg.topic == "/zigbee-lua/permit_join" end) do
+  for ok, msg in ctx:wait_all({"mqtt_client", "message"},
+                              function(msg) return msg.topic == "/zigbee-lua/permit_join" end) do
     U.DEBUG("mqtt_environment", "got permit_join message via MQTT, opening network for devices")
     -- TODO: timeout handling etc
     ctx:fire({"Zigbee","permit_join"},{include={0xfffc}})
